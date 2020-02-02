@@ -1,0 +1,2 @@
+void GetUserInputConfig(rbCubeState * state);
+
