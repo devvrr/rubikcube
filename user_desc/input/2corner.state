@@ -1,0 +1,10 @@
+  edge pos:  0  1  2  3  4  5  6  7  8  9 10 11
+  edge dir:  0  0  0  0  0  0  0  0  0  0  0  0
+corner pos:  0  1  2  3  4  5  6  7
+corner dir:  1  0  0  0  0  1  0  0
+
+*****full path
+red-in -green-in -yellow-in -red-in -yellow-out -pink-in -yellow-in - ---  --- red-out -yellow-out -green-out -red-out -green-in -pink-out -green-out -
+Path Length:14
+
+
