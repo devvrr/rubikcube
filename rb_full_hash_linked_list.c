@@ -559,7 +559,7 @@ void AddFinalNodeToProblemGraph(void)
    if( Graph1[curGraph1NodePtr].level > curLevel )
    {
       printf("level %d count = %d\n",curLevel,levelCount);
-	  FindRedGraphCount();
+	  //FindRedGraphCount();
       fflush(stdin);
       levelCount=0;
       curLevel++;
@@ -619,8 +619,8 @@ void AddFinalNodeToGoalGraph(void)
    }
    if( Graph[curGraphNodePtr].level > curLevel )
    {
-      printf("level %d count = %6d  ",curLevel,levelCount);
-	  FindRedGraphCount();
+      printf("level %d count = %6d  \n",curLevel,levelCount);
+	  //FindRedGraphCount();
       levelCount=0;
       curLevel++;
       nLevelsExpl = curLevel;
@@ -877,7 +877,7 @@ BOOLEAN FindGraph(CPG1_t * cpg1Ptr )
         GetD5Index(&searchState,d5IndexProblemTreeMatchState);
 
         searchStateRedGroup = GetRedGraphGroupId(d5IndexProblemTreeMatchState);
-        if ((Graph[index].RedGroup == searchStateRedGroup) &&
+        if (/*(Graph[index].RedGroup == searchStateRedGroup) &&*/
                 IsCompStateEqual(&(Graph[index].state),&(searchState))/*this condition is redundant*/
            )
         {
@@ -890,7 +890,7 @@ BOOLEAN FindGraph(CPG1_t * cpg1Ptr )
             //TODO PrintFullN(&st1Full,"search State Full");
             printf("Exact Match found in function %s at index=%d!!!\n",__func__,index);
             //PrintPathToGoal(index,gFindLevel?PathRed:PathGoal,gFindLevel?(&plnRed):(&plnGoal));
-            //PrintPathToGoal(index,PathGoal,&plnGoal);
+            PrintPathToGoal(index,PathGoal,&plnGoal);
             return TRUE;
         }
         else
@@ -2023,6 +2023,7 @@ int main( void )
 {
     int i,choice=0,choice1=0,d1,nLevels,found;
     UINT8 dist;
+    int distInt;
     int dist11;
     rbCompState problemStateComp,sComp;
     rbCubeState problemState,sFull,DestFull,parent;
@@ -2039,7 +2040,7 @@ int main( void )
     InitCDTable();
     srand(time(0));
 
-    PopulateRedGroups("./child_gen/redGroup.txt");
+    //PopulateRedGroups("./child_gen/redGroup.txt");
     //printf("red graphs generated\n");
     calc_graph(Graph,GOAL_NODE,&GoalState);
 	printf(" epg1cnt=%d\n",epg1cnt);
@@ -2054,7 +2055,7 @@ int main( void )
     //CheckGraph();
     //   FindSameRedGraphStateCount();
     //   PrintNodes();
-     FindRedGraphCount();
+     //FindRedGraphCount();
     printf("redGraphCount=%d\n",redGraphCount);
     int wLoop=0;
     while(wLoop<4)
@@ -2087,8 +2088,9 @@ int main( void )
                 {
                     case 0:
                         printf("Enter random state distance\n");
-                        //scanf("%d",&dist);
-                        dist = 2*nLevels+2;
+                        //dist = 2*nLevels+2;
+                        scanf("%d",&distInt);
+						dist = distInt;
                         GetRandRbState(&problemStateComp,dist);
                         GetRBStateFullFromComp(&problemStateComp, &problemState);
                         printf("Got random state at dist:%d\n",dist);
