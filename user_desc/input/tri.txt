@@ -1,0 +1,36 @@
+r r r
+r r r
+r r b
+w w b
+p p b
+p p g
+g g w
+g g g
+g g g
+b b y
+b b b
+r p w
+p w p
+p w w
+p w w
+y y b
+y y y
+y y y
+
+
+  edge pos:  0  1  2  9  4  5  6  7  8  3 10 11
+  edge dir:  0  0  0  0  0  0  0  0  0  0  0  0
+corner pos:  0  1  2  3  7  5  6  4
+corner dir:  0  0  2  0  2  0  2  1
+
+
+*****full path
+white-in -pink-in -white-out -green-in -red-in -white-out - ---  --- red-out -green-out -pink-out -white-out -pink-in -white-in -pink-out -
+Path Length:13
+state
+edgePos =    0  1  2  3  4  5  6  7  8  9 10 11
+edgeDir =    0  0  0  0  0  0  0  0  0  0  0  0
+cornerPos =  0  1  2  3  4  5  6  7
+cornerDir =  0  0  0  0  0  0  0  0
+
+***********success. Path is correct

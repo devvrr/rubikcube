@@ -69,8 +69,27 @@ void GetRBStateFullFromComp(rbCompState * sComp, rbCubeState * sFull )
    //printf("**dir = %u \n",sComp->dir );
    //printf("**edge dir = %u \n",GET_EDGE_DIR(sComp->dir) );
    RadixTenToN(edgeDir, GET_EDGE_DIR(sComp->dir), 2,NEDGECUBELETS);
+
+   /*
+   This conversion is required because
+
+   in "full state" we are storing the state as
+   edgePos[i] = what is there in position i, 
+   edgedir[i] = what is it's direction value
+   ---- it is easy to wrote the "move" function in this style of state
+   representation. "move" function :- what is the new state when a move is made
+
+   in "compressed state" we store it as 
+   edgePos[i] = what is there in position i
+   edgeDir[i] = what is the direction value of cubelet i
+   ---- with this style, the direction value matrix doesn't change when
+        only double turns are made
+
+   */
+
    for(i=0;i<12;i++)
        sFull->edgeDir[i] = edgeDir[sFull->edgePos[i]];
+
    //printf("**corner dir = %u \n",GET_CORNER_DIR(sComp->dir) );
    RadixTenToN(cornerDir, GET_CORNER_DIR(sComp->dir), 3,NCORNERCUBELETS);
    for(i=0;i<8;i++)

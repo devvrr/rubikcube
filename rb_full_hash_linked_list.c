@@ -2028,7 +2028,7 @@ int main( void )
     rbCompState problemStateComp,sComp;
     rbCubeState problemState,sFull,DestFull,parent;
     rbIndices indices;
-    printf("Enter the number of levels to explore\n");
+    printf("Enter the number of levels to explore(min 2 Maximum 7)\n");
     scanf("%d",&nLevels);
     if(nLevels > 0 && nLevels < 9 )
         PARENT_COUNT = ParentCount[nLevels-1];
@@ -2058,7 +2058,7 @@ int main( void )
      //FindRedGraphCount();
     printf("redGraphCount=%d\n",redGraphCount);
     int wLoop=0;
-    while(wLoop<4)
+    while(wLoop<400)
     {
         wLoop++;
         int iSearchCount=0; 
@@ -2068,7 +2068,7 @@ int main( void )
         printf("================================================================================\n");
         printf("Enter choice\n");
         printf("0 user config\n");
-        printf("1 Generated Config\n");
+        printf("1 Generated Config(choose this if not sure)\n");
         printf("2 exit\n");
         choice = 1;
         scanf("%d",&choice);
@@ -2079,11 +2079,11 @@ int main( void )
                 GetRBStateCompFromFull(&problemState, &problemStateComp);
                 break;
             case 1:
-                printf("Enter config type choice\n");
-                printf("0 normal config\n");
-                printf("1 red graph Config\n");
+                //printf("Enter config type choice\n");
+                //printf("0 normal config\n");
+                //printf("1 red graph Config\n");
                 choice1 = 0;
-                scanf("%d",&choice1);
+                //scanf("%d",&choice1);
                 switch(choice1)
                 {
                     case 0:
@@ -2129,14 +2129,14 @@ int main( void )
                 break;
         }
         printRbCompState(&problemStateComp);
-        printf("Enter explore method choice\n");
-        printf("0 config function \n");
-        printf("1 calc_graph\n");
-        printf("2 random search\n");
-        printf("3 random search pool\n");
-        printf("4 exit\n");
-        scanf("%d",&choice);
-        //choice = 0;
+        //printf("Enter explore method choice\n");
+        //printf("0 config function \n");
+        //printf("1 calc_graph\n");
+        //printf("2 random search\n");
+        //printf("3 random search pool\n");
+        //printf("4 exit\n");
+        //scanf("%d",&choice);
+        choice = 0;
         switch(choice)
         {
             case 0:
