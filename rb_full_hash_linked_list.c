@@ -2228,7 +2228,7 @@ int main( void )
                 if (i==curGraphNodePtr)
                 {
                     printf("\n*** match node not found ***\n\n");
-                    return 0;
+                    //return 0;
                 }
                 break;
             case 1:
