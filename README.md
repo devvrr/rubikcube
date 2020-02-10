@@ -53,3 +53,6 @@ use the file "rb_full_hash_linked_list_compile" to compile the code/project from
  
  It is found using this program that many of the tripod states have shortest path to the Goal of length less than or equal
  to 14.
+ 
+ tripod3.txt - has a state with all the cubelets in solved position and orientation except 2 corner cubelets with
+ un-solved orientation. This state has a shortest path to Goal of length 14.
