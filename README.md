@@ -16,25 +16,24 @@ Yellow and White opposite to each other
 
 We can make 12 turns from any cube position/state/configuration
 The 12 turns are:
- RED_IN 0
- RED_OUT 1
- PINK_IN 2
- PINK_OUT 3
-
- GREEN_IN 4
- GREEN_OUT 5
- BLUE_IN 6
- BLUE_OUT 7
-
- WHITE_IN 8
- WHITE_OUT 9
- YELLOW_IN 10
- YELLOW_OUT 11
+  RED_IN 0
+  RED_OUT 1
+  PINK_IN 2
+  PINK_OUT 3
+  
+  GREEN_IN 4
+  GREEN_OUT 5
+  BLUE_IN 6
+  BLUE_OUT 7
+  
+  WHITE_IN 8
+  WHITE_OUT 9
+  YELLOW_IN 10
+  YELLOW_OUT 11
  
- Meaning of "in" and "out"::
+ Meaning of "in" and "out" in a move::
      Assume that a Red move is made by holding the Red face/layer with right hand. And let us say the thumb is pointed as in "Thumbs-up". Now if the thumb is pointing "into" the cube, we call it "Red-in" move. Basically the axis of rotation is pointing "into" the cube. If the thumb is pointing out of the cube, the move is called "Red-out". Similarly for all the faces.
 
-===
 ## Compiling the Program:
 use the file "rb_full_hash_linked_list_compile" to compile the code/project from the "rubikcube" folder
 
