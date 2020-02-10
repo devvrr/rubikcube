@@ -16,3 +16,17 @@ g g p
 y y y
 y y y
 y y p
+
+  edge pos:  0  1  2  3  4  5  6  7  8  9 10 11
+  edge dir:  0  0  1  0  0  0  1  0  0  0  0  0
+corner pos:  0  2  6  3  4  5  1  7
+corner dir:  2  2  2  0  0  0  0  0
+The RB Compressed state is:0,1232,35656450
+searching node in the Graph
+H:M:S 21:9:52
+H:M:S 21:9:52
+H:M:S 21:10:35
+searched in 9205568 indices out of 9205568
+
+*** match node not found ***
+
