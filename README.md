@@ -2,6 +2,8 @@
 This program finds optimal solutions for Rubik's cube upto limited depth. Currently it can find optimal solutions for nodes upto depth 14.
 
 ## Notation:
+Goal node: the solved state of the Rubik cube
+
 It is assumed that the Rubik cube has faces with the 6 colours:
         Red,
         Pink,
@@ -40,10 +42,13 @@ use the file "rb_full_hash_linked_list_compile" to compile the code/project from
 ## Running the program:
     1. run "a.out"
     2. enter 7 for "number of levels"
-    3. now it asks if you want a user config or generated config.
+    3. The program takes about 2 minutes for its calculations
+    4. now it asks if you want a user config or generated config.
         Enter "0" (user config) if you have a cube in a particular state to which you want to try to find solution using
         the program. Plea refer to comments in rubikcube/user_desc/convert_user_form.c to know how to input a user config
         in the form readable by the program.
+    5. The program may take 10 to 30 seconds to calculate the path. It may not be able to find the path for some nodes.
+    It can't find path for nodes farther 14 moves from the Goal
         
 
 # Tripod state
