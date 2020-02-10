@@ -93,6 +93,7 @@ int ParentCount[9]=
 };
 #define POWER3_8 6561/*3 to the power of 8*/
 #define RB_NEW(x) ((x*)malloc(sizeof(x)))
+#define RB_NEW_ARRAY(x,n) ((x*)malloc(n*sizeof(x)))
 
 #define MOVE_MASK(x) (0x0001<<x)
 #define INVERSE_MOVE(move) (move ^ 0x01)
@@ -144,6 +145,7 @@ struct CPG1_tag{
 typedef struct CPG1_tag CPG1_t;
 
 struct EPG2_tag{
+   int cpg1Cnt;
    UINT16 epg2Id; /*0..69 ( 8C4 - 1 )*/ /*12C4 now*/
    struct EPG2_tag * epg2Next;
    CPG1_t * cpg1Ptr;
@@ -152,6 +154,7 @@ struct EPG2_tag{
 typedef struct EPG2_tag EPG2_t;
 
 struct EPG1_tag{
+   int epg2Cnt;
    UINT16 epg1Id;/*0..494*/
    struct EPG1_tag * epg1Next;
    EPG2_t * epg2Ptr;
@@ -160,12 +163,19 @@ struct EPG1_tag{
 typedef struct EPG1_tag EPG1_t;
    
 struct ED_tag{
+   int epg1Cnt;
    UINT16 edId;/*0..4095*/
    struct ED_tag * edNext;
    EPG1_t * epg1Ptr;
 };
 
 typedef struct ED_tag ED_t;
+
+struct CD_tag{
+   int edCnt;
+   ED_t * edPtr;
+};
+typedef struct CD_tag CD_t;
 
 
 static rbCompState GoalState = {0,0,0};
@@ -207,7 +217,7 @@ typedef struct {
 
 /*Actually, only 3**7 entries of this table will be used, because there are only that many
  * possible values for the corner cubelet direction value index*/
-static ED_t * CDTable[POWER3_8];
+static CD_t CDTable[POWER3_8];
 
 
 static FinalNode curNode;
@@ -459,7 +469,7 @@ void PrintPathToProblemNode(int id)
 }
 void PushMove( int move)
 {
-printf("pathidx=%d\n",pathidx);
+//printf("pathidx=%d\n",pathidx);
 	FinPath[pathidx++] = move;
 }
 int PopMove()
@@ -478,16 +488,16 @@ void PrintPathToGoal(int id,int PathArr[],int* ln)
 	printf("path to goal node from index:%d is:\n",id);
 	while(id != 0)
 	{
-        printf("ln=%d\n",*ln);
-		PrintMove(Graph[id].parentMove);
-        printf("ln=%d\n",*ln);
+        //printf("ln=%d\n",*ln);
+		//PrintMove(Graph[id].parentMove);
+        //printf("ln=%d\n",*ln);
 		PushMove(INVERSE_MOVE(Graph[id].parentMove));
-        printf("ln=%d\n",*ln);
+        //printf("ln=%d\n",*ln);
 		PathArr[(*ln)++] = INVERSE_MOVE(Graph[id].parentMove);
-        printf("ln=%d\n",*ln);
+        //printf("ln=%d\n",*ln);
 		PushMove(INVERSE_MOVE(Graph[id].parentMove));
 		id = Graph[id].parentIndex;
-        printf("id=%d\n",id);
+        //printf("id=%d\n",id);
 	}
 	printf("\n");
 	move = PopMove();
@@ -800,7 +810,7 @@ void AddNodeEdgeDirBegin(ED_t * edgeDirNodeNextPtr )
    edircnt++;
    newEdgeDirNode->edId = curStateHashIndex.ED;
    newEdgeDirNode->edNext = edgeDirNodeNextPtr;
-   CDTable[curStateHashIndex.CD] = newEdgeDirNode;
+   CDTable[curStateHashIndex.CD].edPtr = newEdgeDirNode;
    
    AddNodeEPG1Begin(newEdgeDirNode,NULL);
 }
@@ -840,12 +850,228 @@ void InsertProblemGraph(CPG1_t * cpg1Ptr )
 	//printf("InsertProblemGraph");
 	AddFinalNodeToProblemGraph();
 }
+CPG1_t* ConvertCpg1ToArray(CPG1_t * cpg1NodePtr,int *cpg1Cnt )
+{
+	int cpg1count=0;
+	CPG1_t * cpg1NodePtrTmp=cpg1NodePtr;
+	CPG1_t * cpg1NodePtrTmp1;
+	CPG1_t * newCpg1Array;
+	while(cpg1NodePtrTmp)
+	{
+		cpg1NodePtrTmp=cpg1NodePtrTmp->cpg1Next;
+		cpg1count++;
+	}
+	newCpg1Array = RB_NEW_ARRAY(CPG1_t,cpg1count);
+	PRINT_TEXT("ConvertCpg1ToArray()\n");
+	if( !newCpg1Array )
+	{
+	    *cpg1Cnt = 0;
+		printf("could not allocate memory for cpg1 Array\n");
+		exit(0);
+	}
+	*cpg1Cnt = cpg1count;
+	if (cpg1count > 200)
+	{
+	    printf("cpg1count=%d too big\n",cpg1count);
+	}
+	cpg1NodePtrTmp=cpg1NodePtr;
+	cpg1count=0;
+	while(cpg1NodePtrTmp)
+	{
+		newCpg1Array[cpg1count].cpg1Id = cpg1NodePtrTmp->cpg1Id;
+		newCpg1Array[cpg1count].finalNode = cpg1NodePtrTmp->finalNode;
+		cpg1count++;
+		cpg1NodePtrTmp1=cpg1NodePtrTmp;
+		cpg1NodePtrTmp=cpg1NodePtrTmp->cpg1Next;
+		free(cpg1NodePtrTmp1);
+	}
+	return newCpg1Array;
+}
+EPG2_t* ConvertEpg2ToArray(EPG2_t * epg2NodePtr,int *epg2Cnt )
+{
+	int epg2count=0;
+	int cpg1Cnt=0;
+	EPG2_t * epg2NodePtrTmp=epg2NodePtr;
+	EPG2_t * epg2NodePtrTmp1;
+	EPG2_t * newEpg2Array;
+	while(epg2NodePtrTmp)
+	{
+		epg2NodePtrTmp=epg2NodePtrTmp->epg2Next;
+		epg2count++;
+	}
+	newEpg2Array = RB_NEW_ARRAY(EPG2_t,epg2count);
+	PRINT_TEXT("ConvertEpg2ToArray()\n");
+	if( !newEpg2Array )
+	{
+		printf("could not allocate memory for epg2 Array\n");
+		*epg2Cnt = 0;
+		exit(0);
+	}
+	*epg2Cnt = epg2count;
+	epg2NodePtrTmp=epg2NodePtr;
+	epg2count=0;
+	while(epg2NodePtrTmp)
+	{
+		newEpg2Array[epg2count].epg2Id = epg2NodePtrTmp->epg2Id;
+		newEpg2Array[epg2count].cpg1Ptr = ConvertCpg1ToArray(epg2NodePtrTmp->cpg1Ptr,&cpg1Cnt);
+		newEpg2Array[epg2count].cpg1Cnt = cpg1Cnt;
+		if (cpg1Cnt > 200)
+		{
+			printf("line:%d cpg1count=%d too big\n",__LINE__,cpg1Cnt);
+		}
+		epg2count++;
+		epg2NodePtrTmp1=epg2NodePtrTmp;
+		epg2NodePtrTmp=epg2NodePtrTmp->epg2Next;
+		free(epg2NodePtrTmp1);
+	}
+	return newEpg2Array;
+}
+EPG1_t* ConvertEpg1ToArray(EPG1_t * epg1NodePtr, int *epg1Cnt )
+{
+	int epg1count=0;
+	int epg2Cnt=0;
+	EPG1_t * epg1NodePtrTmp=epg1NodePtr;
+	EPG1_t * epg1NodePtrTmp1;
+	EPG1_t * newEpg1Array;
+	while(epg1NodePtrTmp)
+	{
+		epg1NodePtrTmp=epg1NodePtrTmp->epg1Next;
+		epg1count++;
+	}
+	newEpg1Array = RB_NEW_ARRAY(EPG1_t,epg1count);
+	PRINT_TEXT("ConvertEpg1ToArray()\n");
+	if( !newEpg1Array )
+	{
+	    *epg1Cnt = 0;
+		printf("could not allocate memory for epg1 Array\n");
+		exit(0);
+	}
+	*epg1Cnt = epg1count;
+	epg1NodePtrTmp=epg1NodePtr;
+	epg1count=0;
+	while(epg1NodePtrTmp)
+	{
+		newEpg1Array[epg1count].epg1Id = epg1NodePtrTmp->epg1Id;
+		newEpg1Array[epg1count].epg2Ptr = ConvertEpg2ToArray(epg1NodePtrTmp->epg2Ptr,&epg2Cnt);
+		newEpg1Array[epg1count].epg2Cnt = epg2Cnt;
+		epg1count++;
+		epg1NodePtrTmp1=epg1NodePtrTmp;
+		epg1NodePtrTmp=epg1NodePtrTmp->epg1Next;
+		free(epg1NodePtrTmp1);
+	}
+	return newEpg1Array;
+}
+ED_t* ConvertEdgeDirToArray(ED_t * edNodePtr,int *edCnt )
+{
+	int edcount=0;
+	int epg1Cnt=0;
+	ED_t * edNodePtrTmp=edNodePtr;
+	ED_t * edNodePtrTmp1;
+	ED_t * newEdgeDirArray;
+	while(edNodePtrTmp)
+	{
+		edNodePtrTmp=edNodePtrTmp->edNext;
+		edcount++;
+	}
+	newEdgeDirArray = RB_NEW_ARRAY(ED_t,edcount);
+	PRINT_TEXT("ConvertEdgeDirToArray()\n");
+	if( !newEdgeDirArray )
+	{
+		printf("could not allocate memory for ed array\n");
+		*edCnt = 0;
+		exit(0);
+	}
+	*edCnt = edcount;
+	edNodePtrTmp=edNodePtr;
+	edcount=0;
+	while(edNodePtrTmp)
+	{
+		newEdgeDirArray[edcount].edId = edNodePtrTmp->edId;
+		newEdgeDirArray[edcount].epg1Ptr = ConvertEpg1ToArray(edNodePtrTmp->epg1Ptr,&epg1Cnt);
+		newEdgeDirArray[edcount].epg1Cnt = epg1Cnt;
+		edcount++;
+		edNodePtrTmp1=edNodePtrTmp;
+		edNodePtrTmp=edNodePtrTmp->edNext;
+		free(edNodePtrTmp1);
+	}
+	return newEdgeDirArray;
+}
+void SanityCheckCpg1Array(CPG1_t *cpg1Ptr, int cpg1Cnt)
+{
+	int i;
+	for(i=0;i<cpg1Cnt;i++)
+	{
+	}
+}
+void SanityCheckEpg2Array(EPG2_t *epg2Ptr, int epg2Cnt)
+{
+	int i;
+	for(i=0;i<epg2Cnt;i++)
+	{
+		if(epg2Ptr[i].cpg1Cnt>200)
+		{
+			printf("%d epg2=%d cpg1count=%d\n",__LINE__,i,epg2Ptr[i].cpg1Cnt);
+		}
+		SanityCheckCpg1Array(epg2Ptr[i].cpg1Ptr,epg2Ptr[i].cpg1Cnt);
+	}
+}
+void SanityCheckEpg1Array(EPG1_t *epg1Ptr, int epg1Cnt)
+{
+	int i;
+	for(i=0;i<epg1Cnt;i++)
+	{
+		if(epg1Ptr[i].epg2Cnt>200)
+		{
+			printf("%d epg1=%d epg2count=%d\n",__LINE__,i,epg1Ptr[i].epg2Cnt);
+		}
+		SanityCheckEpg2Array(epg1Ptr[i].epg2Ptr,epg1Ptr[i].epg2Cnt);
+	}
+}
+void SanityCheckEdgeDirArray(ED_t * edPtr,int edCnt)
+{
+	int i;
+	for(i=0;i<edCnt;i++)
+	{
+		if(edPtr[i].epg1Cnt>200)
+		{
+			printf("%d edir=%d epg1count=%d\n",__LINE__,i,edPtr[i].epg1Cnt);
+		}
+		SanityCheckEpg1Array(edPtr[i].epg1Ptr,edPtr[i].epg1Cnt);
+	}
+}
+void SanityCheckArray()
+{
+	int cdir;
+	for(cdir=0;cdir<POWER3_8;cdir++)
+		if( CDTable[cdir].edPtr != NULL )
+		{
+			if( CDTable[cdir].edCnt > 4000)
+			{
+				printf("%d cdir=%d edcount=%d\n",__LINE__,cdir,CDTable[cdir].edCnt);
+			}
+			SanityCheckEdgeDirArray(CDTable[cdir].edPtr,CDTable[cdir].edCnt);
+		}
+}
+/*convert each linked list in the 5 tier linked list to an array*/
+void ConertGraphToArray(void)
+{
+    int cdir;
+	int edCnt=0;
+	for(cdir=0;cdir<POWER3_8;cdir++)
+	    if( CDTable[cdir].edPtr != NULL )
+		{
+            CDTable[cdir].edPtr = ConvertEdgeDirToArray(CDTable[cdir].edPtr,&edCnt);
+            CDTable[cdir].edCnt = edCnt;
+		}
+
+    SanityCheckArray();
+}
 BOOLEAN Find(rbCompState * state);
 /*return 2 for found in red graph*/
-BOOLEAN FindGraph(CPG1_t * cpg1Ptr )
+BOOLEAN FindGraph(int cpg1PtrFinalNode )
 {
     int found=0;
-	INT32 index = cpg1Ptr->finalNode;
+	INT32 index = cpg1PtrFinalNode;
 	INT32 indexPrev=BAD_INDEX;
     rbCubeState stFull,diff,st1Full;
     rbCompState diffComp;
@@ -1278,7 +1504,7 @@ void Insert(void)
 		printf("problem node indices\n");
 		PrintSubTableIndices(&curStateHashIndex);
 	}
-	if( CDTable[curStateHashIndex.CD] == NULL )
+	if( CDTable[curStateHashIndex.CD].edPtr == NULL )
 	{
 		AddNodeEdgeDirBegin( NULL );
 	}
@@ -1291,175 +1517,94 @@ void Insert(void)
 			printf("CD=%d\n",curStateHashIndex.CD);
 		}
 
-		InsertEdgeDir(CDTable[curStateHashIndex.CD]);
+		InsertEdgeDir(CDTable[curStateHashIndex.CD].edPtr);
 	}
 
 }
-BOOLEAN FindCpg1(EPG2_t * parent)
+BOOLEAN FindCpg1(CPG1_t * cpg1NodePtr, int cpg1Cnt)
 {
 	UINT16 cpg1Id = curStateHashIndex.CPG1;
-	CPG1_t * cpg1NodePtr = parent->cpg1Ptr;
 
-	if( cpg1Id < cpg1NodePtr->cpg1Id )
+	int low=0,mid,high=cpg1Cnt;
+	while(low<=high)
 	{
-		return 0;
-	}
-	else if( cpg1Id == cpg1NodePtr->cpg1Id )
-    {
-        //printf("same red grpah node match found2!\n");
-        //RB_ExitProper();
-        //return 2;
-        return FindGraph( cpg1NodePtr);
-    }
-	else
-	{
-		CPG1_t * prevCpg1NodePtr = cpg1NodePtr;
-		cpg1NodePtr = cpg1NodePtr->cpg1Next;
-		int x=0;
-		while(cpg1NodePtr)
+		mid = (low+high)/2;
+		if (cpg1Id < cpg1NodePtr[mid].cpg1Id)
 		{
-			if( x++ > 1000 )
-			{
-				printf("while loop too long FindCpg1\n");
-				return 0;
-			}
-
-			if( cpg1Id < cpg1NodePtr->cpg1Id )
-			{
-				return 0;
-			}
-			else if( cpg1Id == cpg1NodePtr->cpg1Id )
-			{
-				printf("same red grpah node match found1!\n");
-                //return 2;
-				return FindGraph( cpg1NodePtr);
-			}
-			else
-			{
-				prevCpg1NodePtr = cpg1NodePtr;
-				cpg1NodePtr = cpg1NodePtr->cpg1Next;
-			}
+			high = mid - 1;
 		}
-		return 0;
+		else if (cpg1Id == cpg1NodePtr[mid].cpg1Id)
+			return FindGraph(cpg1NodePtr[mid].finalNode);
+		else
+		{
+			low = mid + 1;
+		}
 	}
+	return 0;
 }
-BOOLEAN FindEpg2(EPG1_t * parent )
+BOOLEAN FindEpg2(EPG2_t * epg2NodePtr, int epg2Cnt)
 {
 	UINT16 epg2Id = curStateHashIndex.EPG2;
-	EPG2_t * epg2NodePtr = parent->epg2Ptr;
 
-	if( epg2Id < epg2NodePtr->epg2Id )
+	int low=0,mid,high=epg2Cnt;
+	while(low<=high)
 	{
-		return 0;
-	}
-	else if( epg2Id == epg2NodePtr->epg2Id )
-	{
-			//printf("iFind %s =\n",__func__);
-		return FindCpg1(epg2NodePtr);//continue search in the next dimension
-	}
-	else
-	{
-		EPG2_t * prevEpg2NodePtr = epg2NodePtr;
-		epg2NodePtr = epg2NodePtr->epg2Next;
-		while(epg2NodePtr)
+		mid = (low+high)/2;
+		if (epg2Id < epg2NodePtr[mid].epg2Id)
 		{
-			if( epg2Id < epg2NodePtr->epg2Id )
-			{
-				return 0;
-			}
-			else if( epg2Id == epg2NodePtr->epg2Id )
-			{
-			//printf("iFind %s =\n",__func__);
-				return FindCpg1(epg2NodePtr);//continue search in the next dimension
-			}
-			else
-			{
-				prevEpg2NodePtr = epg2NodePtr;
-				epg2NodePtr = epg2NodePtr->epg2Next;
-			}
+			high = mid - 1;
 		}
-		return 0;
+		else if (epg2Id == epg2NodePtr[mid].epg2Id)
+			return FindCpg1(epg2NodePtr[mid].cpg1Ptr,epg2NodePtr[mid].cpg1Cnt);
+		else
+		{
+			low = mid + 1;
+		}
 	}
+	return 0;
 }
-BOOLEAN FindEpg1(ED_t * parent )
+BOOLEAN FindEpg1(EPG1_t * epg1NodePtr, int epg1Cnt )
 {
 	UINT16 epg1Id = curStateHashIndex.EPG1;
-	EPG1_t * epg1NodePtr = parent->epg1Ptr;
-
-	if( epg1Id < epg1NodePtr->epg1Id )
+	int low=0,mid,high=epg1Cnt;
+	while(low<=high)
 	{
-		return 0;
-	}
-	else if( epg1Id == epg1NodePtr->epg1Id )
-	{
-			//printf("iFind %s =\n",__func__);
-		return FindEpg2(epg1NodePtr);//continue search in the next dimension
-	}
-	else
-	{
-		EPG1_t * prevEpg1NodePtr = epg1NodePtr;
-		epg1NodePtr = epg1NodePtr->epg1Next;
-		while(epg1NodePtr)
+		mid = (low+high)/2;
+		if (epg1Id < epg1NodePtr[mid].epg1Id)
 		{
-			if( epg1Id < epg1NodePtr->epg1Id )
-			{
-				return 0;
-			}
-			else if( epg1Id == epg1NodePtr->epg1Id )
-			{
-			//printf("iFind %s =\n",__func__);
-				return FindEpg2(epg1NodePtr);//continue search in the next dimension
-			}
-			else
-			{
-				prevEpg1NodePtr = epg1NodePtr;
-				epg1NodePtr = epg1NodePtr->epg1Next;
-			}
+			high = mid - 1;
 		}
-		return 0;
+		else if (epg1Id == epg1NodePtr[mid].epg1Id)
+			return FindEpg2(epg1NodePtr[mid].epg2Ptr,epg1NodePtr[mid].epg2Cnt);
+		else
+		{
+			low = mid + 1;
+		}
 	}
-
+	return 0;
 }
-BOOLEAN FindEdgeDir(ED_t * edNodePtr)
+BOOLEAN FindEdgeDir(ED_t * edNodePtr, int edCnt)
 {
 	UINT16 edId = curStateHashIndex.ED;
 	/*new edge dir id could be less, equal or more*/
 
 	/*1. Less than the first node edge dir index*/
-
-	if( edId < edNodePtr->edId )
+	int low=0,mid,high=edCnt;
+	while(low<=high)
 	{
-		return 0;
-	}
-	else if( edId == edNodePtr->edId )
-	{
-			//printf("iFind %s =\n",__func__);
-		return FindEpg1(edNodePtr);//continue search in the next dimension
-	}
-	else
-	{
-		ED_t * prevEdNodePtr = edNodePtr;
-		edNodePtr = edNodePtr->edNext;
-		while(edNodePtr)
+		mid = (low+high)/2;
+		if (edId < edNodePtr[mid].edId)
 		{
-			if( edId < edNodePtr->edId )
-			{
-				return 0;
-			}
-			else if( edId == edNodePtr->edId )
-			{
-			//printf("iFind %s =\n",__func__);
-				return FindEpg1(edNodePtr);//continue search in the next dimension
-			}
-			else
-			{
-				prevEdNodePtr = edNodePtr;
-				edNodePtr = edNodePtr->edNext;
-			}
+			high = mid - 1;
 		}
-
-		return 0;
-	}  
+		else if (edId == edNodePtr[mid].edId)
+			return FindEpg1(edNodePtr[mid].epg1Ptr,edNodePtr[mid].epg1Cnt);
+		else
+		{
+			low = mid + 1;
+		}
+	}
+	return 0;
 }
 BOOLEAN Find(rbCompState * state)
 {
@@ -1467,14 +1612,14 @@ BOOLEAN Find(rbCompState * state)
 
 	//PrintSubTableIndices(&curStateHashIndex);
 
-	if( CDTable[curStateHashIndex.CD] == NULL )
+	if( CDTable[curStateHashIndex.CD].edPtr == NULL )
 	{
 		return 0;
 	}
 	else
 	{
 //			printf("iFind %s =\n",__func__);
-		return FindEdgeDir(CDTable[curStateHashIndex.CD]);
+		return FindEdgeDir(CDTable[curStateHashIndex.CD].edPtr,CDTable[curStateHashIndex.CD].edCnt);
 	}
 }
 
@@ -1544,9 +1689,12 @@ void calc_graph(FinalNode * gr, UINT8 flag, rbCompState * startState)
  * This is the fist tier of the hash table*/
 static void InitCDTable( void )
 {
-   int i;
-   for(i=0;i<POWER3_8;i++)
-      CDTable[i] = NULL;
+	int i;
+	for(i=0;i<POWER3_8;i++)
+	{
+		CDTable[i].edPtr = NULL;
+		CDTable[i].edCnt = 0;
+	}
 }
 void printRbCompState( rbCompState * state )
 {
@@ -2021,240 +2169,269 @@ void RandomSearch(rbCubeState * problemState)
 }
 int main( void )
 {
-    int i,choice=0,choice1=0,d1,nLevels,found;
-    UINT8 dist;
-    int distInt;
-    int dist11;
-    rbCompState problemStateComp,sComp;
-    rbCubeState problemState,sFull,DestFull,parent;
-    rbIndices indices;
-    printf("Enter the number of levels to explore(min 2 Maximum 7)\n");
-    scanf("%d",&nLevels);
-    if(nLevels > 0 && nLevels < 9 )
-        PARENT_COUNT = ParentCount[nLevels-1];
-    else
-        PARENT_COUNT = ParentCount[6];
+	int i,choice=0,choice1=0,d1,nLevels,found;
+	UINT8 dist;
+	int distInt;
+	int dist11;
+	time_t now;
+	time(&now);
+	struct tm * curTime;
+	struct tm * curTime1;
+	rbCompState problemStateComp,sComp;
+	rbCubeState problemState,sFull,DestFull,parent;
+	rbIndices indices;
+	printf("Enter the number of levels to explore(min 2 Maximum 7)\n");
+	scanf("%d",&nLevels);
+	if(nLevels > 0 && nLevels < 9 )
+		PARENT_COUNT = ParentCount[nLevels-1];
+	else
+		PARENT_COUNT = ParentCount[6];
 
-    AllocateGraphs();
-    //printf("graph size = %d\n",sizeof(Graph));
-    InitCDTable();
-    srand(time(0));
+	AllocateGraphs();
+	//printf("graph size = %d\n",sizeof(Graph));
+	InitCDTable();
+	srand(time(0));
 
-    //PopulateRedGroups("./child_gen/redGroup.txt");
-    //printf("red graphs generated\n");
-    calc_graph(Graph,GOAL_NODE,&GoalState);
+	//PopulateRedGroups("./child_gen/redGroup.txt");
+	//printf("red graphs generated\n");
+	time(&now);
+	curTime = localtime(&now);
+	calc_graph(Graph,GOAL_NODE,&GoalState);
+	printf("before H:M:S %2d:%2d:%2d\n",curTime->tm_hour,curTime->tm_min,curTime->tm_sec);
+	time(&now);
+	curTime1 = localtime(&now);
+	printf(" after H:M:S %2d:%2d:%2d\n",curTime1->tm_hour,curTime1->tm_min,curTime1->tm_sec);
 	printf(" epg1cnt=%d\n",epg1cnt);
 	printf(" epg2cnt=%d\n",epg2cnt);
 	printf(" cpg1cnt=%d\n",cpg1cnt);
 	printf(" edircnt=%d\n",edircnt);
-    MarkRedGraphs();
-    printf("redGraphCount=%d\n",redGraphCount);
-    //GenerateAllRedGraphs();
-    //   printf("press any key to continue\n");
-    //getchar();
-    //CheckGraph();
-    //   FindSameRedGraphStateCount();
-    //   PrintNodes();
-     //FindRedGraphCount();
-    printf("redGraphCount=%d\n",redGraphCount);
-    int wLoop=0;
-    while(wLoop<400)
-    {
-        wLoop++;
-        int iSearchCount=0; 
-        plnProb=plnGoal=plnRed=0;
-        pathidx=0;
-        pathidx1=0;
-        printf("================================================================================\n");
-        printf("Enter choice\n");
-        printf("0 user config\n");
-        printf("1 Generated Config(choose this if not sure)\n");
-        printf("2 exit\n");
-        choice = 1;
-        scanf("%d",&choice);
-        switch(choice)
-        {
-            case 0:
-                GetUserInputConfig(&problemState);
-                GetRBStateCompFromFull(&problemState, &problemStateComp);
-                break;
-            case 1:
-                //printf("Enter config type choice\n");
-                //printf("0 normal config\n");
-                //printf("1 red graph Config\n");
-                choice1 = 0;
-                //scanf("%d",&choice1);
-                switch(choice1)
-                {
-                    case 0:
-                        printf("Enter random state distance\n");
-                        //dist = 2*nLevels+2;
-                        scanf("%d",&distInt);
-						dist = distInt;
-                        GetRandRbState(&problemStateComp,dist);
-                        GetRBStateFullFromComp(&problemStateComp, &problemState);
-                        printf("Got random state at dist:%d\n",dist);
-                        break;
-                    case 1:
-                        printf("Enter random state distance\n");
-                        scanf("%d",&dist11);
-                        dist=dist11;
-                        printf("enter red distance\n");
-                        scanf("%d",&d1);
-                        //GetRandRbState(&problemStateComp,dist);
-                        //GetRBStateFullFromComp(&problemStateComp, &problemState);
-                        //CalculateSubTableIndices( &problemStateComp,&indices);
-                        //PrintFull(&problemState);
-                        //PrintSubTableIndices(&indices);
-                        //parent = problemState;
-                        //GetChild(&parent,&problemState,5);
-                        //parent = problemState;
-                        //GetChild(&parent,&problemState,5);
-                        //GetRBStateCompFromFull(&problemState, &problemStateComp);
-                        //CalculateSubTableIndices( &problemStateComp,&indices);
-                        //PrintSubTableIndices(&indices);
-                        //PrintFull(&problemState);
-                        //GetRandRbState(&problemStateComp,dist);
-                        GetRandRbRedState(&problemStateComp,dist,d1);
-                        GetRBStateFullFromComp(&problemStateComp, &problemState);
-                        break;
-                    default:
-                        break;
-                }
-                break;
-            case 2:
-                return 0;
-            default:
-                printf("bad choice %d\n",choice);
-                break;
-        }
-        printRbCompState(&problemStateComp);
-        //printf("Enter explore method choice\n");
-        //printf("0 config function \n");
-        //printf("1 calc_graph\n");
-        //printf("2 random search\n");
-        //printf("3 random search pool\n");
-        //printf("4 exit\n");
-        //scanf("%d",&choice);
-        choice = 0;
-        switch(choice)
-        {
-            case 0:
-                printf("searching node in the Graph\n");
-                iSearchCount=0; 
-                /*TODO no need to search for each i.
-                  Enough to search with i that is root for that red graph
-                  No. we need to search each node*/
-                for(i=0;i<curGraphNodePtr;i++)
-                {
-                    gFindLevel=0;
-                    iSearchCount++; 
-                    //printf("i=%d\n",i);
-                    GetRBStateFullFromComp(&Graph[i].state, &sFull );
-                    //PrintFull(&sFull,"state i");
-                    //printf("i1=%d\n",i);
-                    GetChildByConfig(&problemState,&sFull,&DestFull);
-                    //PrintFullN(&problemState,"prob");
-                    //PrintFullN(&DestFull,"dest");
-                    //printf("i2=%d\n",i);
-                    GetRBStateCompFromFull(&DestFull,&sComp);
-                    //printf("i3=%d\n",i);
-                    //printRbCompState(&sComp);
-                    curNode.state = sComp;
-                    searchState = sComp;
-                    found = Find(&sComp);
-//                    if ( i >0 && i%100)
-  //                     printf("searched %d\n",i);
-                    if ( found == 1 || found ==2)
-                    {
-                        int PathFinal[60],lnFin=0;
-                        rbCubeState s11,s12,child;
-                        s11 = problemState;
-                        printf("\n*** Exact Match Found *** i=%d found=%d\n\n",i,found);
-
-                        printf("destfull\n");
-                        PrintFull(&DestFull);
-                        PrintPathToGoal(i,PathProb,&plnProb);
-
-                        printf("*****full path\n");
-                        int iii,mi;
-                        for(iii=plnProb-1;iii>=0;iii--)
-                        {
-                            PrintMove(PathProb[iii]^0x01);
-                            PathFinal[lnFin++]= PathProb[iii]^0x01;
-                        }
-                        printf(" --- ");
-                        //for(iii=plnRed-1;iii>=0;iii--)
-                        for(iii=0;iii<plnRed;iii++)
-                        {
-                            PrintMove(PathRed[iii]);
-                            PathFinal[lnFin++]= PathRed[iii];
-                        }
-                        printf(" --- ");
-                        for(iii=0;iii<plnGoal;iii++)
-                        {
-                            PrintMove(PathGoal[iii]);
-                            PathFinal[lnFin++]= PathGoal[iii];
-                        }
-                        printf("\nPath Length:%d\n",lnFin);
-                        //PrintPathToProblemNode(i);
-
-                        parent = problemState;
-                        for(mi=0;mi<lnFin;mi++)
-                        {
-                            GetChild(&parent,&child,PathFinal[mi]);
-                            parent = child;
-                        }
-                        PrintFull(&child);
-                        rbCubeState goalSt = GOAL_STATE;
-                        if (CompareFullStates(&child,&goalSt))
-                            printf("\n***********success. Path is correct\n\n");
-                        else
-                        {
-                            printf("\n***********Fail. Path is not correct\n\n");
-                            return 0;
-                        }
-
-
-                        break;
-                    }
-                    else if( found == 2 )
-                        printf("found2 at i=%d\n",i);
-                    //else
-                    //  printf("*** exact match not found with i=%d ***\n",i);
-                    //printf("i4=%d\n",i);
-                }
-                printf("searched in %d indices out of %d\n",iSearchCount,i);
-                if (i==curGraphNodePtr)
-                {
-                    printf("\n*** match node not found ***\n\n");
-                    //return 0;
-                }
-                break;
-            case 1:
-                printf("Exploring graph of problem state\n");
-
-
-                calc_graph(Graph1,PROBLEM_NODE,&problemStateComp);
-                PrintNodes(Graph1);
-
-                if( matchCount > 0 )
-                    printf("matches found!!! match count = %d\n", matchCount);
-                else{      
-                    printf("Match not found\n");
-                    ExploreDiffs();
-                }
-                break;
-            case 2:
-                RandomSearch(&problemState);
-                break;
-		    case 3:
-			    RandomSearchPool();
+	ConertGraphToArray();
+	MarkRedGraphs();
+	printf("redGraphCount=%d\n",redGraphCount);
+	//GenerateAllRedGraphs();
+	//   printf("press any key to continue\n");
+	//getchar();
+	//CheckGraph();
+	//   FindSameRedGraphStateCount();
+	//   PrintNodes();
+	//FindRedGraphCount();
+	printf("redGraphCount=%d\n",redGraphCount);
+	int wLoop=0;
+	while(wLoop<400)
+	{
+		wLoop++;
+		int iSearchCount=0; 
+		plnProb=plnGoal=plnRed=0;
+		pathidx=0;
+		pathidx1=0;
+		printf("================================================================================\n");
+		printf("Enter choice\n");
+		printf("0 user config\n");
+		printf("1 Generated Config(choose this if not sure)\n");
+		printf("2 exit\n");
+		choice = 1;
+		scanf("%d",&choice);
+		switch(choice)
+		{
+			case 0:
+				GetUserInputConfig(&problemState);
+				GetRBStateCompFromFull(&problemState, &problemStateComp);
 				break;
-            case 4:
-                return 0;
-        }
-    }
-    FreeGraphs();
-    return 0;
+			case 1:
+				//printf("Enter config type choice\n");
+				//printf("0 normal config\n");
+				//printf("1 red graph Config\n");
+				choice1 = 0;
+				//scanf("%d",&choice1);
+				switch(choice1)
+				{
+					case 0:
+						printf("Enter random state distance\n");
+						dist = 2*nLevels;
+						//scanf("%d",&distInt);
+						//dist = distInt;
+						GetRandRbState(&problemStateComp,dist);
+						GetRBStateFullFromComp(&problemStateComp, &problemState);
+						printf("Got random state at dist:%d\n",dist);
+						break;
+					case 1:
+						printf("Enter random state distance\n");
+						scanf("%d",&dist11);
+						dist=dist11;
+						printf("enter red distance\n");
+						scanf("%d",&d1);
+						//GetRandRbState(&problemStateComp,dist);
+						//GetRBStateFullFromComp(&problemStateComp, &problemState);
+						//CalculateSubTableIndices( &problemStateComp,&indices);
+						//PrintFull(&problemState);
+						//PrintSubTableIndices(&indices);
+						//parent = problemState;
+						//GetChild(&parent,&problemState,5);
+						//parent = problemState;
+						//GetChild(&parent,&problemState,5);
+						//GetRBStateCompFromFull(&problemState, &problemStateComp);
+						//CalculateSubTableIndices( &problemStateComp,&indices);
+						//PrintSubTableIndices(&indices);
+						//PrintFull(&problemState);
+						//GetRandRbState(&problemStateComp,dist);
+						GetRandRbRedState(&problemStateComp,dist,d1);
+						GetRBStateFullFromComp(&problemStateComp, &problemState);
+						break;
+					default:
+						break;
+				}
+				break;
+			case 2:
+				return 0;
+			default:
+				printf("bad choice %d\n",choice);
+				break;
+		}
+		printRbCompState(&problemStateComp);
+		//printf("Enter explore method choice\n");
+		//printf("0 config function \n");
+		//printf("1 calc_graph\n");
+		//printf("2 random search\n");
+		//printf("3 random search pool\n");
+		//printf("4 exit\n");
+		//scanf("%d",&choice);
+		choice = 0;
+		switch(choice)
+		{
+			case 0:
+				printf("searching node in the Graph\n");
+				iSearchCount=0; 
+				/*TODO no need to search for each i.
+				  Enough to search with i that is root for that red graph
+				  No. we need to search each node*/
+				time(&now);
+				curTime = localtime(&now);
+				printf("H:M:S %d:%d:%d\n",curTime->tm_hour,curTime->tm_min,curTime->tm_sec);
+				for(i=0;i<curGraphNodePtr;i++)
+				{
+					gFindLevel=0;
+					iSearchCount++; 
+					//printf("i=%d\n",i);
+					GetRBStateFullFromComp(&Graph[i].state, &sFull );
+					//PrintFull(&sFull,"state i");
+					//printf("i1=%d\n",i);
+					GetChildByConfig(&problemState,&sFull,&DestFull);
+					//PrintFullN(&problemState,"prob");
+					//PrintFullN(&DestFull,"dest");
+					//printf("i2=%d\n",i);
+					GetRBStateCompFromFull(&DestFull,&sComp);
+					//printf("i3=%d\n",i);
+					//printRbCompState(&sComp);
+					curNode.state = sComp;
+					searchState = sComp;
+					found = Find(&sComp);
+					//                    if ( i >0 && i%100)
+					//                     printf("searched %d\n",i);
+					if ( found == 1 || found ==2)
+					{
+						int PathFinal[60],lnFin=0;
+						rbCubeState s11,s12,child;
+						s11 = problemState;
+						printf("\n*** Exact Match Found *** i=%d found=%d\n\n",i,found);
+
+						printf("destfull\n");
+						PrintFull(&DestFull);
+						PrintPathToGoal(i,PathProb,&plnProb);
+
+						printf("*****full path\n");
+						int iii,mi;
+						for(iii=plnProb-1;iii>=0;iii--)
+						{
+							PrintMove(PathProb[iii]^0x01);
+							PathFinal[lnFin++]= PathProb[iii]^0x01;
+						}
+						printf(" --- ");
+						//for(iii=plnRed-1;iii>=0;iii--)
+						for(iii=0;iii<plnRed;iii++)
+						{
+							PrintMove(PathRed[iii]);
+							PathFinal[lnFin++]= PathRed[iii];
+						}
+						printf(" --- ");
+						for(iii=0;iii<plnGoal;iii++)
+						{
+							PrintMove(PathGoal[iii]);
+							PathFinal[lnFin++]= PathGoal[iii];
+						}
+						printf("\nPath Length:%d\n",lnFin);
+						//PrintPathToProblemNode(i);
+
+						parent = problemState;
+						for(mi=0;mi<lnFin;mi++)
+						{
+							GetChild(&parent,&child,PathFinal[mi]);
+							parent = child;
+						}
+						PrintFull(&child);
+						rbCubeState goalSt = GOAL_STATE;
+						if (CompareFullStates(&child,&goalSt))
+							printf("\n***********success. Path is correct\n\n");
+						else
+						{
+							printf("\n***********Fail. Path is not correct\n\n");
+							//return 0;
+						}
+
+
+						break;
+					}
+					else if( found == 2 )
+						printf("found2 at i=%d\n",i);
+					//else
+					//  printf("*** exact match not found with i=%d ***\n",i);
+					//printf("i4=%d\n",i);
+				}
+				printf("H:M:S %d:%d:%d\n",curTime->tm_hour,curTime->tm_min,curTime->tm_sec);
+				time(&now);
+				curTime1 = localtime(&now);
+				printf("H:M:S %d:%d:%d\n",curTime1->tm_hour,curTime1->tm_min,curTime1->tm_sec);
+				printf("searched in %d indices out of %d\n",iSearchCount,i);
+				if (i==curGraphNodePtr)
+				{
+					printf("\n*** match node not found ***\n\n");
+					//return 0;
+				}
+				break;
+			case 1:
+				printf("Exploring graph of problem state\n");
+
+
+				calc_graph(Graph1,PROBLEM_NODE,&problemStateComp);
+				PrintNodes(Graph1);
+
+				if( matchCount > 0 )
+					printf("matches found!!! match count = %d\n", matchCount);
+				else{      
+					printf("Match not found\n");
+					ExploreDiffs();
+				}
+				break;
+			case 2:
+				RandomSearch(&problemState);
+				break;
+			case 3:
+				RandomSearchPool();
+				break;
+			case 4:
+				return 0;
+		}
+	}
+	FreeGraphs();
+	return 0;
 }
+
+
+/*
+list all the 8 tripods configs
+
+list all tripods(4!*3^4*3!*2^3) that have path of length less than o equal to 14 to Goal
+
+If problem node is at a distance greater than 14 from Goal
+   from problem node, find if there exists a path of length<=14 to any tripod node
+
+*/
