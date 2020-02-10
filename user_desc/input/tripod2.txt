@@ -18,3 +18,19 @@ y y y
 y y y
 
 
+  edge pos:  0  1  2  3  4  5  9  7  8  6 10 11
+  edge dir:  0  0  1  0  0  0  1  0  0  0  0  0
+corner pos:  0  1  6  3  4  5  2  7
+corner dir:  0  1  0  0  0  0  1  0
+The RB Compressed state is:390,512,33817548
+
+*****full path
+red-out -green-in -green-in -pink-in -green-out -pink-out - ---  --- green-out -white-in -pink-out -white-out -pink-in -green-out -red-in -
+Path Length:13
+state
+edgePos =    0  1  2  3  4  5  6  7  8  9 10 11
+edgeDir =    0  0  0  0  0  0  0  0  0  0  0  0
+cornerPos =  0  1  2  3  4  5  6  7
+cornerDir =  0  0  0  0  0  0  0  0
+
+***********success. Path is correct
