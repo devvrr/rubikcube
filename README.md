@@ -1,6 +1,17 @@
 # rubikcube
 This program finds optimal solutions for Rubik's cube upto limited depth. Currently it can find optimal solutions for nodes upto depth 14.
 
+The program exhaustively generates nodes of the cube starting from Goal state.
+- It can generate nodes upto depth 7 from "Goal node" --- called Graph (this takes about 2 minutes)
+- And then, for a given "problem node"/"scrambled state",
+    -- it takes each node from the list of neighbours of "Goal" generated earlier(Graph) - call it "reference node"
+       -- "reference node" is obtained when a sequence of moves are made on "Goal"
+       -- finds the "resultant node" that would be obtained when the same sequence of moves were made on "problem node"
+          -- the function that finds the "res node" is called "config" function. This function takes just the "problem node"
+          and "ref node" as input
+       -- checks if the "res node" is in the "Graph"
+       -- if yes -- we have found a path
+
 ## Notation:
 Goal node: the solved state of the Rubik cube
 
