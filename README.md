@@ -61,6 +61,15 @@ use the file "rb_full_hash_linked_list_compile" to compile the code/project from
     5. The program may take 10 to 30 seconds to calculate the path. It may not be able to find the path for some nodes.
     It can't find path for nodes farther 14 moves from the Goal
         
+# Level count
+level 0 count =      1  
+level 1 count =     12  
+level 2 count =    114  
+level 3 count =   1068  
+level 4 count =  10011  
+level 5 count =  93840  
+level 6 count = 878880  
+level 7 count = 8221632  
 
 # Tripod state
  Let's call a state where all the positions are solved except the cubelets on three edges coming out of a particular corner as
