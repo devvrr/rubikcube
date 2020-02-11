@@ -16,3 +16,12 @@ p w g
 y y y
 y y y
 y y g
+
+  edge pos:  0  1  2  3  4  5  6  7  8  9 10 11
+  edge dir:  0  0  0  0  0  0  0  0  0  0  0  0
+corner pos:  1  6  2  3  4  5  0  7
+corner dir:  1  0  1  0  0  0  2  0
+The RB Compressed state is:0,8792,5346
+
+
+match node not found
