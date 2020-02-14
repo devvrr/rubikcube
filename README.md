@@ -59,7 +59,7 @@ use the file "rb_full_hash_linked_list_compile" to compile the code/project from
         the program. Plea refer to comments in rubikcube/user_desc/convert_user_form.c to know how to input a user config
         in the form readable by the program.
     5. The program may take 10 to 30 seconds to calculate the path. It may not be able to find the path for some nodes.
-    It can't find path for nodes farther 14 moves from the Goal
+    It can't find path for nodes farther than 14 moves from the Goal
         
 # Level count
 level 0 count =      1  
