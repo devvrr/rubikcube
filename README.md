@@ -71,6 +71,15 @@ level 5 count =  93840
 level 6 count = 878880  
 level 7 count = 8221632  
 
+# Rubik cube state Arithmetic: Addition
+We can add two states of the Rubik cube. But the addition is not commutative
+File: chile_gen/rbutils.c
+Function: GetChildByConfig
+# Rubik cube state Arithmetic: Subtraction
+We can find the difference of two states of the Rubik cube. And ofcourse it is not commutative.
+File: diff/diff.c
+Function: RbCubeConfigDiff
+
 # Tripod state
  Let's call a state where all the positions are solved except the cubelets on three edges coming out of a particular corner as
  tripod state
