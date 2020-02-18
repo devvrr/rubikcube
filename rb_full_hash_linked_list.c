@@ -1525,7 +1525,7 @@ BOOLEAN FindCpg1(CPG1_t * cpg1NodePtr, int cpg1Cnt)
 {
 	UINT16 cpg1Id = curStateHashIndex.CPG1;
 
-	int low=0,mid,high=cpg1Cnt;
+	int low=0,mid,high=cpg1Cnt-1;
 	while(low<=high)
 	{
 		mid = (low+high)/2;
@@ -1546,7 +1546,7 @@ BOOLEAN FindEpg2(EPG2_t * epg2NodePtr, int epg2Cnt)
 {
 	UINT16 epg2Id = curStateHashIndex.EPG2;
 
-	int low=0,mid,high=epg2Cnt;
+	int low=0,mid,high=epg2Cnt-1;
 	while(low<=high)
 	{
 		mid = (low+high)/2;
@@ -1566,7 +1566,7 @@ BOOLEAN FindEpg2(EPG2_t * epg2NodePtr, int epg2Cnt)
 BOOLEAN FindEpg1(EPG1_t * epg1NodePtr, int epg1Cnt )
 {
 	UINT16 epg1Id = curStateHashIndex.EPG1;
-	int low=0,mid,high=epg1Cnt;
+	int low=0,mid,high=epg1Cnt-1;
 	while(low<=high)
 	{
 		mid = (low+high)/2;
@@ -1589,7 +1589,7 @@ BOOLEAN FindEdgeDir(ED_t * edNodePtr, int edCnt)
 	/*new edge dir id could be less, equal or more*/
 
 	/*1. Less than the first node edge dir index*/
-	int low=0,mid,high=edCnt;
+	int low=0,mid,high=edCnt-1;
 	while(low<=high)
 	{
 		mid = (low+high)/2;
