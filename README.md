@@ -23,9 +23,11 @@ It is assumed that the Rubik cube has faces with the 6 colours:
         Yellow,
         White
         
-Red and Pink opposite to each other
-Green and Blue opposite to each other
-Yellow and White opposite to each other
+Red and Pink opposite to each other.
+
+Green and Blue opposite to each other.
+
+Yellow and White opposite to each other.
 
 We can make 12 turns from any cube position/state/configuration
 The 12 turns are:
@@ -56,7 +58,7 @@ use the file "rb_full_hash_linked_list_compile" to compile the code/project from
     3. The program takes about 2 minutes for its calculations
     4. now it asks if you want a user config or generated config.
         Enter "0" (user config) if you have a cube in a particular state to which you want to try to find solution using
-        the program. Plea refer to comments in rubikcube/user_desc/convert_user_form.c to know how to input a user config
+        the program. Please refer to comments in rubikcube/user_desc/convert_user_form.c to know how to input a user config
         in the form readable by the program.
     5. The program may take 10 to 30 seconds to calculate the path. It may not be able to find the path for some nodes.
     It can't find path for nodes farther than 14 moves from the Goal
