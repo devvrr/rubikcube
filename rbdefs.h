@@ -10,8 +10,10 @@
 #define FALSE 0
 #define GET_EDGE_DIR(X) (X>>16)
 #define GET_CORNER_DIR(X) ( X & 0x0000FFFF )
-#define GOAL_STATE {{0,1,2,3,4,5,6,7,8,9,10,11},{0,0,0,0,0,0,0,0,0,0,0,0},\
-   {0,1,2,3,4,5,6,7},{0,0,0,0,0,0,0,0}}
+#define GOAL_STATE {{0,1,2,3,4,5,6,7,8,9,10,11},\
+   {0,1,2,3,4,5,6,7}}
+//#define GOAL_STATE {{0,1,2,3,4,5,6,7,8,9,10,11},{0,0,0,0,0,0,0,0,0,0,0,0},\
+ //  {0,1,2,3,4,5,6,7},{0,0,0,0,0,0,0,0}}
 
 /*moves*/
 #define RED_IN 0
@@ -28,6 +30,8 @@
 #define WHITE_OUT 9
 #define YELLOW_IN 10
 #define YELLOW_OUT 11
+#define NGROUPS 5
+#define GROUPSIZE 4
 
 
 typedef unsigned int UINT32;
@@ -48,13 +52,19 @@ typedef enum{
    yellow
 } rbCubeColours;
 
+#define NEW_COL 0
 typedef enum{
    red_green,
    green_red=0,
    red_blue,
    blue_red=1,
+#if (NEW_COL==1)
+   red_white,
+   white_red=2,
+#else
    green_pink,
    pink_green=2,
+#endif
    pink_blue,
    blue_pink=3,
 
@@ -62,8 +72,13 @@ typedef enum{
    blue_yellow=4,   
    yellow_green,
    green_yellow=5,
+#if (NEW_COL==1)
+   yellow_red,
+   red_yellow=6,
+#else
    white_green,
    green_white=6,
+#endif
    white_blue,
    blue_white=7,
 
@@ -71,20 +86,71 @@ typedef enum{
    yellow_pink=8,
    white_pink,
    pink_white=9,
+#if (NEW_COL==1)
+   green_pink,
+   pink_green=10,
+   white_green,
+   green_white=11,
+#else
    red_white,
    white_red=10,
    yellow_red,
    red_yellow=11,
+#endif
    invalid_edgepos
 } EDGEPOS;
+
+/*
+tripod
+
+yellow-green - 5
+yellow-pink - 8
+yellow-blue - 4
+yellow-red - 11
+red-green - 0
+red-blue - 1
+pink-blue - 3
+white-red - 10
+white-blue - 7
+
+white-red-blue - 4  -->0
+blue-yellow-pink - 7 -->2
+blue-yellow-red - 3
+yellow-red-green - 5 -->1
+*/
+
 typedef enum
 {
    edge_dir_zero,
    edge_dir_one,
    invalid_edgedir
 } EDGEDIR;
+
+
 typedef enum
 {
+#if (NEW_COL==1)
+   red_white_blue,
+   red_blue_white=0,
+   blue_red_white=0,
+   blue_white_red=0,
+   white_blue_red=0,
+   white_red_blue=0,
+   
+   red_green_yellow,
+   red_yellow_green=1,
+   yellow_green_red=1,
+   yellow_red_green=1,
+   green_red_yellow=1,
+   green_yellow_red=1,
+
+   yellow_blue_pink,
+   yellow_pink_blue=2,
+   pink_blue_yellow=2,
+   pink_yellow_blue=2,
+   blue_pink_yellow=2,
+   blue_yellow_pink=2,
+#else
    green_pink_yellow,
    green_yellow_pink=0,
    yellow_pink_green=0,
@@ -98,7 +164,6 @@ typedef enum
    white_red_green=1,
    green_red_white=1,
    green_white_red=1,
-   
 
    blue_white_pink,
    blue_pink_white=2,
@@ -106,6 +171,7 @@ typedef enum
    pink_white_blue=2,
    white_blue_pink=2,
    white_pink_blue=2,
+ #endif
 
    red_yellow_blue,
    red_blue_yellow=3,
@@ -115,19 +181,36 @@ typedef enum
    blue_yellow_red=3,
    
 
+#if (NEW_COL==1)
+   green_pink_yellow,
+   green_yellow_pink=4,
+   yellow_pink_green=4,
+   yellow_green_pink=4,
+   pink_green_yellow=4,
+   pink_yellow_green=4,
+   
+   red_white_green,
+   red_green_white=5,
+   white_green_red=5,
+   white_red_green=5,
+   green_red_white=5,
+   green_white_red=5,
+#else
    red_white_blue,
    red_blue_white=4,
    blue_red_white=4,
    blue_white_red=4,
    white_blue_red=4,
    white_red_blue=4,
-   
+
    red_green_yellow,
    red_yellow_green=5,
    yellow_green_red=5,
    yellow_red_green=5,
    green_red_yellow=5,
    green_yellow_red=5,
+#endif   
+
    
    white_green_pink,
    white_pink_green=6,
@@ -136,12 +219,21 @@ typedef enum
    green_white_pink=6,
    green_pink_white=6,
    
+#if (NEW_COL==1)
+   blue_white_pink,
+   blue_pink_white=7,
+   pink_blue_white=7,
+   pink_white_blue=7,
+   white_blue_pink=7,
+   white_pink_blue=7,
+#else   
    yellow_blue_pink,
    yellow_pink_blue=7,
    pink_blue_yellow=7,
    pink_yellow_blue=7,
    blue_pink_yellow=7,
    blue_yellow_pink=7,
+#endif
    invalid_cornerpos
 } CORNERPOS;
 typedef enum
@@ -167,21 +259,25 @@ typedef struct{
 typedef struct
 {
    UINT8 edgePos[12];/*This takes only values 0 to 11*/
-   UINT8 edgeDir[12];/*This takes only values 0 and 1*/
+   //UINT8 edgeDir[12];/*This takes only values 0 and 1*/
    UINT8 cornerPos[8];/*This takes only values 0 to 7*/
-   UINT8 cornerDir[8];/*This takes only values 0, 1, 2*/
+   //UINT8 cornerDir[8];/*This takes only values 0, 1, 2*/
 } rbCubeState;
 
 
 void GetPermFromIndex( UINT8 * perm, UINT32 index, UINT8 nObjects );
 UINT32 GetIndexFromPerm(UINT8 * perm, UINT8 nObjects);
+void GetPermNormalForm(UINT8 * perm, UINT8 nPerm);
 void PrintMove(int id);
 typedef struct
 {
    UINT32 edgePos;/*The index of the permutation - max 12!*/
-   UINT16 cornerPos;/*The index of the permutation - max 8!*/
    UINT32 dir;/*left two bytes for edge direction value index, right two bytes for
    corner direction value index*/
+   UINT16 cornerPos;/*The index of the permutation - max 8!*/
+   UINT16 cornerPosT;/*The index of the permutation - max 8!*/
+   UINT32 eposT;
+   UINT32 cPosT;
 } rbCompState;/*compressed state*/
 
 
@@ -195,6 +291,8 @@ typedef unsigned char rIndex[5];
 void PrintFull( rbCubeState * s );
 void PopulateRedGroups(char fileName[20]);
 unsigned char CompareFullStates( rbCubeState * s1, rbCubeState * s2);
+extern int eposT[9];// = {0,1,3,4,5,7,8,10,11};
+extern int cposT[4];// = {3,4,5,7};
 
 
 #define PRINT_TEXT(s) //printf(s)
