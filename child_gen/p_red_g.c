@@ -20,8 +20,6 @@ find child for given seq of moves in red graph
 #include <stdlib.h>
 #include "../rbdefs.h"
 
-#define NGROUPS 5
-#define GROUPSIZE 4
 #define N 4
 #define POWER24_5 7962624
 #define BAD_INDEX -1
@@ -155,7 +153,41 @@ void calc_child_index_red_pos(unsigned char child_pos[NGROUPS][GROUPSIZE], rInde
    for(i=0;i<NGROUPS;i++)
       child_index[i] = GetIndexFromPerm(child_pos[i],N);
 }
-
+void GetRedPosFromRbState(rbCubeState * state, unsigned char red_pos[NGROUPS][GROUPSIZE])
+{
+    int i;
+    for(i=0;i<12;i++)
+    {
+        red_pos[i/4][i%4] = state->edgePos[i];
+        if ( ((i+1)%4) == 0 )
+            GetPermNormalForm( red_pos[i/4], 4);
+    }
+    for(i=0;i<8;i++)
+    {
+        red_pos[3+(i/4)][i%4] = state->cornerPos[i];
+        if ( ((i+1)%4) == 0 )
+            GetPermNormalForm( red_pos[3+(i/4)], 4);
+    }
+}
+void GetRbStateFromRedPos(unsigned char red_pos[NGROUPS][GROUPSIZE], rbCubeState* state)
+{
+    int i;
+    for(i=0;i<12;i++)
+    {
+        //state->edgeDir[i] = 0;
+        state->edgePos[i] =(i/4)*4 + red_pos[i/4][i%4];
+    }
+    for(i=0;i<8;i++)
+    {
+        //state->cornerDir[i] = 0;
+        state->cornerPos[i] =(i/4)*4 + red_pos[3 + i/4][i%4];
+        if(state->cornerPos[i] >= 8)
+        {
+        printf("*** error bad cornerPos[%d]=%d %s %d\n",i,state->cornerPos[i],__FILE__,__LINE__);
+        exit(0);
+        }
+    }
+}
 /*Finds the child configuration in the reduced graph for a
 given parent and move number
 and puts it into the given config*/
@@ -306,6 +338,7 @@ UINT8 find_child( rIndex parent, UINT8 move, rIndex child, config * child_config
 
    return 1;
 }
+static int LevelStart[15];
 void calc_configs( void )
 {
    rIndex parent,child_index;
@@ -339,13 +372,19 @@ void calc_configs( void )
          if( curr_level != child_config.level )
          {
             fprintf(df,"level %d count = %d\n",curr_level,level_count);
+            printf("level %d count = %d\n",curr_level,level_count);
             fflush(df);
             curr_level++;
             level_count = 0;
+            LevelStart[curr_level] = config_count;
+            printf("levelstart[%d]=%d\n",curr_level,config_count);
          }
          level_count++;
+         //printf("updating sequence[%d]\n",config_count);
          for(i=0;i<NGROUPS;i++)
-            sequence[config_count][i] = child_index[i];
+         {
+             sequence[config_count][i] = child_index[i];
+         }
          config_count++;
 
       }
@@ -375,12 +414,12 @@ int GetPath(rIndex goalId,UINT8 * path, UINT8 * len)
    while(level>0 && i<16)
    {
       path[i] = configs[Id[0]][Id[1]][Id[2]][Id[3]][Id[4]].parent_move;
-      printf("path[%d]=%d\n",i,path[i]);
+      //printf("path[%d]=%d\n",i,path[i]);
       
       for(j=0;j<NGROUPS;j++)
          Id1[j] = configs[Id[0]][Id[1]][Id[2]][Id[3]][Id[4]].parent[j];
       level = configs[Id[0]][Id[1]][Id[2]][Id[3]][Id[4]].level;
-      printf("level = %d\n",level);
+      //printf("level = %d\n",level);
       for(j=0;j<NGROUPS;j++)
 	      Id[j] = Id1[j];
       i++;
@@ -402,6 +441,44 @@ void InitConfigs( void )
 
 
   // print_graph();
+}
+
+/*find path from problemId(which is a node in the reduced Graph, a 5-tuple) to GOAL node
+GOAL node is at level 0 in in "configs" */
+int GetRedGraphPath1(rIndex problemId,UINT8 * path, UINT8 * len)
+{
+    if ( GetPath(problemId,path,len) )
+        return 1;
+    return 0;
+}
+
+/*
+return level - the shortest distance to the Goal of this reduced Graph*/
+int GetRedGraphLevel(rIndex problemId)
+{
+   return configs[problemId[0]][problemId[1]][problemId[2]][problemId[3]][problemId[4]].level;
+}
+
+static int si1,si2,si3,si4,si5,slevel,sindex;
+void GetRedGraphNodeAtLevel(rIndex problemId, int level)
+{
+    printf("%s:%d:%s\n",__FILE__,__LINE__,__func__);
+    printf("config_count=%d\n",config_count);
+    printf("level=%d\n",level);
+    printf("sindex=%d\n",sindex);
+    printf("%d\n",LevelStart[level]);
+    printf("%d\n",LevelStart[level]+sindex);
+    if((LevelStart[level]+sindex) >= config_count)
+        sindex=0;
+    printf("sindex=%d\n",sindex);
+    printf("%d\n",LevelStart[level]+sindex);
+
+    problemId[0] = sequence[LevelStart[level]+sindex][0];
+    problemId[1] = sequence[LevelStart[level]+sindex][1];
+    problemId[2] = sequence[LevelStart[level]+sindex][2];
+    problemId[3] = sequence[LevelStart[level]+sindex][3];
+    problemId[4] = sequence[LevelStart[level]+sindex][4];
+    sindex++;
 }
 int GetRedGraphPath(rIndex problemId,rIndex goalId,UINT8 * path, UINT8 * len)
 {
@@ -487,6 +564,7 @@ void GenerateAllRedGraphs(void)
 
    InitConfigs();
    
+   //for(i=0;i<1;i++)
    for(i=0;i<12;i++)
    {
       if( FindFreeSlot(rId) == BAD_INDEX )
@@ -499,7 +577,7 @@ void GenerateAllRedGraphs(void)
       printf("valid(0,6,21,21,5)%d\n",configs[0][6][21][21][5].valid);
    }
    printf("%d red graphs generated\n",i);
-   print_graph();
+   //print_graph();
 }
 
 #endif
@@ -549,6 +627,10 @@ void PopulateRedGroups(char fileName[20])
 
    printf("populated\n");
 }
+int GetRedGroup(rIndex id)
+{
+    return redGroups[fac4*id[0]+fac3*id[1]+fac2*id[2]+fac1*id[3]+id[4]];
+}
 #if 0
 void PrintArray( UINT8 * a, UINT8 length)
 {
@@ -588,6 +670,18 @@ void CheckMany(void)
         Check(MoveList[i].seq1,MoveList[i].nMoves);
         Check(MoveList[i].seq2,MoveList[i].nMoves);
     }
+}
+
+void CheckRedNeighbour()
+{
+    int i;
+    rIndex parent_index;
+    unsigned char red_pos[NGROUPS][GROUPSIZE];
+    rbCubeState state;
+    AssignId1( parent_index);
+
+    red_pos_matrix_from_index( parent_index, red_pos );
+    GetRbStateFromRedPos( red_pos, &state);
 }
 int main( void )
 {
