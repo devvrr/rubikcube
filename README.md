@@ -64,14 +64,16 @@ use the file "rb_full_hash_linked_list_compile" to compile the code/project from
     It can't find path for nodes farther than 14 moves from the Goal
         
 # Level count
-level 0 count =      1  
-level 1 count =     12  
-level 2 count =    114  
-level 3 count =   1068  
-level 4 count =  10011  
-level 5 count =  93840  
-level 6 count = 878880  
-level 7 count = 8221632  
+level 0 count =        1  
+level 1 count =       12  
+level 2 count =      114  
+level 3 count =     1068  
+level 4 count =    10011  
+level 5 count =    93840  
+level 6 count =   878880  
+level 7 count =  8221632  
+level 8 count = 76843595  
+
 
 # Rubik cube state Arithmetic: Addition
 We can add two states of the Rubik cube. But the addition is not commutative
