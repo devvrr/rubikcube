@@ -218,30 +218,36 @@ static void GetConfigPositions( UserCubeDesc userDesc, rbCubeState * state )
 }
 static void GetEdgeDir(UserCubeDesc userDesc, rbCubeState * state)
 {
-   int i;
-   for( i=0; i<12; i++ )
-   {
-      if( edgeDirMap[state->edgePos[i]] ==
-	   userDesc[edgeDirXyz[i][0]][edgeDirXyz[i][1]][edgeDirXyz[i][2]] )
-	 state->edgeDir[i] = 0;
-      else
-	 state->edgeDir[i] = 1;
+    int i;
+    UINT8 edgeDir[12];
+    for( i=0; i<12; i++ )
+    {
+        if( edgeDirMap[state->edgePos[i]] ==
+                userDesc[edgeDirXyz[i][0]][edgeDirXyz[i][1]][edgeDirXyz[i][2]] )
+            edgeDir[i] = 0;
+        else
+            edgeDir[i] = 1;
 
-   }
+    }
+    for(i=0;i<12;i++)
+        state->edgePos[i] |= (edgeDir[i]<<4);
 }
 static void GetCornerDir(UserCubeDesc userDesc, rbCubeState * state)
 {
-   int i,j;
-   for( i=0; i<8; i++ )
-   {
-      for(j=0;j<3;j++)
-      {
-         if( cornerDirMap[i/4][state->cornerPos[i]][j] ==
-	    userDesc[cornerDirXyz[i][0]][cornerDirXyz[i][1]][cornerDirXyz[i][2]] )
-	    state->cornerDir[i] = j;
-      }
+    int i,j;
+    UINT8 cornerDir[8];
+    for( i=0; i<8; i++ )
+    {
+        for(j=0;j<3;j++)
+        {
+            if( cornerDirMap[i/4][state->cornerPos[i]][j] ==
+                    userDesc[cornerDirXyz[i][0]][cornerDirXyz[i][1]][cornerDirXyz[i][2]] )
+                cornerDir[i] = j;
+        }
 
-   }
+    }
+    for(i=0;i<8;i++)
+        state->cornerPos[i] |= (cornerDir[i]<<3);
 }
 static Boolean IsColorInThree( rbCubeColours c1, rbCubeColours c2, rbCubeColours c3, rbCubeColours ref )
 {
@@ -285,43 +291,43 @@ static CORNERPOS GetCornerPosFromColors( rbCubeColours c1, rbCubeColours c2, rbC
       return yellow_blue_pink;
 
    printf("error in corner cubelet colours; cubelet with this combination of colors doesn't exist.\n");
-   return yellow_blue_pink;/*The value returned here is arbitrary*/
+   return invalid_cornerpos;/*The value returned here is arbitrary*/
 }
 static EDGEPOS GreenEdgePosGet( rbCubeColours c2 )
 {
-   switch( c2 )
-   {
-      case red:
-	 return green_red;
-      case pink:
-	 return green_pink;
-      case yellow:
-	 return green_yellow;
-      case white:
-	 return green_white;
-      default:
-	 printf("bad edge cube colours\n");
-	 return green_white;//arbitrary
-	 break;
-   }
+	switch( c2 )
+	{
+		case red:
+			return green_red;
+		case pink:
+			return green_pink;
+		case yellow:
+			return green_yellow;
+		case white:
+			return green_white;
+		default:
+			printf("bad edge cube colours\n");
+			return invalid_edgepos;
+			break;
+	}
 }
 static EDGEPOS BlueEdgePosGet( rbCubeColours c2 )
 {
-   switch( c2 )
-   {
-      case red:
-	 return blue_red;
-      case pink:
-	 return blue_pink;
-      case yellow:
-	 return blue_yellow;
-      case white:
-	 return blue_white;
-      default:
-	 printf("bad edge cube colours\n");
-	 return blue_white;//arbitrary
-	 break;
-   }
+	switch( c2 )
+	{
+		case red:
+			return blue_red;
+		case pink:
+			return blue_pink;
+		case yellow:
+			return blue_yellow;
+		case white:
+			return blue_white;
+		default:
+			printf("bad edge cube colours\n");
+			return invalid_edgepos;
+			break;
+	}
 }
 static EDGEPOS GetEdgePosFromColors( rbCubeColours c1, rbCubeColours c2 )
 {
@@ -422,20 +428,10 @@ void PrintConfig(rbCubeState * state)
    {
       printf("%3d",state->edgePos[i]);
    }
-   printf("\n  edge dir:");
-   for(i=0;i<12;i++)
-   {
-      printf("%3d",state->edgeDir[i]);
-   }
    printf("\ncorner pos:");
    for(i=0;i<8;i++)
    {
       printf("%3d",state->cornerPos[i]);
-   }
-   printf("\ncorner dir:");
-   for(i=0;i<8;i++)
-   {
-      printf("%3d",state->cornerDir[i]);
    }
    printf("\n");
       
@@ -443,13 +439,24 @@ void PrintConfig(rbCubeState * state)
 #if 1 
 void GetUserInputConfig(rbCubeState * state)
 {
-   UserCubeDesc d;
+	UserCubeDesc d;
+	int i;
 
-   ReadUserCubeDesc(d);
-   GetConfigPositions( d, state );
-   GetEdgeDir( d, state );
-   GetCornerDir( d, state );
-   PrintConfig(state);
+	while(1)
+	{
+		ReadUserCubeDesc(d);
+		GetConfigPositions( d, state );
+		for(i=0;i<12;i++)
+			if(state->edgePos[i] == invalid_edgepos)
+				continue;
+		for(i=0;i<8;i++)
+			if(state->cornerPos[i] == invalid_cornerpos)
+				continue;
+		GetEdgeDir( d, state );
+		GetCornerDir( d, state );
+		PrintConfig(state);
+		break;
+	}
 }
 #endif
 #if 0 

@@ -71,8 +71,8 @@
 #include "child_gen/rbutils.h"
 #include "diff/diff.h"
 #include "user_desc/convert_user_form.h"
-#define NODE_COUNT 26873856
-//#define NODE_COUNT 9839380
+  #define NODE_COUNT 96873856
+//#define NODE_COUNT  9839380
 //#define NODE_COUNT 9839380//1296
 //#define NODE_COUNT 17000
 #define PARENT_COUNT6 105047//128
@@ -85,11 +85,11 @@ int ParentCount[9]=
 /*1*/13,
 /*2*/127,
 /*3*/1195,
-/*4*/11206,
+/*4*/11207,
 /*5*/105047,
 /*6*/983927,
-/*7*/9205558,
-/*8*/90055580
+/*7*/9205559,
+/*8*/90055581
 };
 #define POWER3_8 6561/*3 to the power of 8*/
 #define RB_NEW(x) ((x*)malloc(sizeof(x)))
@@ -115,29 +115,54 @@ typedef unsigned char BOOLEAN;
 
 
 typedef struct{
-   rbCompState state;
-   UINT16 yesMoves; /*12 bits used: iTh(from the right; right most bit is the LSB ) bit
-		      is 1, if a neighbour with that move is already
-   present in the graph dicovered so far. Otherwise it is zero*/
+   rbCubeState state;
    UINT8 parentMove;/*move made at the parent to come to this state(0..11)*/
-   UINT8 level;
-//   UINT8 redGraphGroup;
+   UINT8 level;/*distance from Goal node.*/
    INT32 nodeNext;
    INT32 parentIndex;
-   UINT8 firstInRedGr;
-   UINT8 RedGroup;
-   int RedGraph;
 } FinalNode;
 
+//268435455 = 0x0FFFFFFF
+//#define EPosTableSize (79833600*6)
+#define EPosTableSize 479001600
+#define FAC 1
+int EPosTable[EPosTableSize];/*12!/6*/
+
+/*red group */
+struct CPos_tag{
+   INT32 finalNode; /*index of a node in the Array of nodes of Goal Graph*/
+   struct CPos_tag * CPosNext;
+   UINT16 CPosId; /*0..40320(8!)*/
+   UINT32 hitCount;/*no of nodes stored under this hash value */
+};
+
+typedef struct CPos_tag CPos_t;
+
+struct cubesRed_tag{
+    int level;
+    struct{
+        int redGraphId;
+        int level;
+    } child[6];
+} CubesRedGraphNeighb[20736][32];
+struct{
+    int cube;
+    int vertex;
+    int levelChild;
+    int move;
+    rbCubeState stateChild;
+    rbCubeState stateParent;
+} cubeMove;
+
+rbCubeState redGraphGoal[1297];
 
 /*corner position group1*/
 struct CPG1_tag{
-   INT32 finalNode; /*index of a node in the Array of nodes of Goal Graph*/
-   INT32 finalNodePr;/*index of node in problem graph*/
+   CPos_t * CPosPtr;
    struct CPG1_tag * cpg1Next;
    UINT8 cpg1Id; /*0..69*/
-   UINT32 hitCount;/*no of nodes stored under this hash value */
-   UINT8 graph;/*0 - goal graph, 1 problem graph, 2 - both*/
+   UINT32 CPosCnt;/*no of nodes stored under this hash value */
+   int redGraphId;
 };
 
 typedef struct CPG1_tag CPG1_t;
@@ -176,15 +201,12 @@ struct CD_tag{
 typedef struct CD_tag CD_t;
 
 
-static rbCompState GoalState = {0,0,0};
-//static rbCompState GoalState = {244671840,29102,174069472};
+static rbCubeState GoalState = GOAL_STATE;
+//static rbCubeState GoalState = {244671840,29102,174069472};
 //static FinalNode Goal = {{0,0,0},0,0,0,BAD_INDEX,BAD_INDEX};/*actually the parentMove and
 //						parentIndex for the Goal node are undefined.
 //					       Nobody is going to use them. They are used now*/
 
-//static FinalNode Graph1[NODE_COUNT];
-static FinalNode * Graph1;
-//static FinalNode Graph[NODE_COUNT];
 static FinalNode * Graph;
 
 
@@ -195,10 +217,14 @@ static UINT32 curGraph1NodePtr=0;
 static UINT32 curParent1Ptr;
 static int gFindLevel=0;
 static int nLevelsExpl;
+static int redGroupCount;
 static int cpg1cnt;
 static int epg1cnt;
 static int epg2cnt;
 static int edircnt;
+
+static int InsertGraphCount;
+static int FinalNodeCount;
 
 typedef struct {
    UINT16 CD;/*0..3^8 -1*/
@@ -210,6 +236,7 @@ typedef struct {
 
    /*There are two corner position groups*/
    UINT8 CPG1;/*0..69(8C4-1)*/
+   UINT16 CPosId;
 
 } rbIndices;
 
@@ -223,28 +250,26 @@ static rbIndices curStateHashIndex;
 
 static UINT8 goalFlag=GOAL_NODE;
 
-static rbCompState problemTreeMatchState;
-static rbCompState goalTreeMatchState;
-static rbCompState searchState;
+static rbCubeState problemTreeMatchState;
+static rbCubeState goalTreeMatchState;
+static rbCubeState searchState;
 static int goalTreeMatchStateIndex;
 static int goalTreeMatchStateCount=0;
 static int redGraphCount;
 static int matchCount;
+static int redGrChild;
 static UINT8 redGraphPath[30],redGraphPathLength=0;
 
 void FindRedGraphPath(void);
-void CalcPaths(void);
 void PrintPathToGoal(int id,int Path[],int* ln);
 int PathGoal[50],PathRed[30],PathProb[50],plnGoal,plnRed,plnProb;
-void PrintCompState( rbCompState * s );
 //unsigned char GetRedGraphGroupId(rIndex id);
 //int GetRedGraphPath(rIndex problemId,rIndex goalId,UINT8 * path, UINT8 * len);
 
 void PrintFinalNode( FinalNode * node )
 {
    printf("The final node is...\n");
-   PrintCompState(&(node->state));
-   printf("yesMoves=%d  ",node->yesMoves);
+   //PrintCompState(&(node->state));
    printf("parentMove=%d  ",node->parentMove);
    printf("level=%d\n",node->level);
    printf("nodeNext=%d  ",node->nodeNext);
@@ -260,132 +285,7 @@ void PrintArray(UINT8 * a, UINT8 n)
 }
 
 
-UINT8 GetEdgePosGroup1Index(UINT8 edgePos[NEDGECUBELETS])
-{
-   UINT8 perm[4];
-   perm[0] = edgePos[green_red];
-   perm[1] = edgePos[red_blue];
-   perm[2] = edgePos[green_pink];
-   perm[3] = edgePos[pink_blue];
 
-   GetPermNormalForm(perm,4);
-
-   return (UINT8)GetIndexFromPerm(perm,4);
-   
-}
-UINT8 GetEdgePosGroup2Index(UINT8 edgePos[NEDGECUBELETS])
-{
-   UINT8 perm[4];
-   perm[0] = edgePos[blue_yellow];
-   perm[1] = edgePos[yellow_green];
-   perm[2] = edgePos[green_white];
-   perm[3] = edgePos[white_blue];
-
-   GetPermNormalForm(perm,4);
-
-   return (UINT8)GetIndexFromPerm(perm,4);
-}
-UINT8 GetEdgePosGroup3Index(UINT8 edgePos[NEDGECUBELETS])
-{
-   UINT8 perm[4];
-   perm[0] = edgePos[yellow_pink];
-   perm[1] = edgePos[pink_white];
-   perm[2] = edgePos[white_red];
-   perm[3] = edgePos[red_yellow];
-   
-   GetPermNormalForm(perm,4);
-
-   return (UINT8)GetIndexFromPerm(perm,4);
-}
-UINT8 GetCornerPosGroup1Index(UINT8 cornerPos[NCORNERCUBELETS])
-{
-   UINT8 perm[4];
-
-   perm[0] = cornerPos[pink_yellow_green];
-   perm[1] = cornerPos[green_white_red];
-   perm[2] = cornerPos[pink_white_blue];
-   perm[3] = cornerPos[blue_red_yellow];
-   
-   GetPermNormalForm(perm,4);
-
-   return (UINT8)GetIndexFromPerm(perm,4);
-}
-UINT8 GetCornerPosGroup2Index(UINT8 cornerPos[NCORNERCUBELETS])
-{
-   UINT8 perm[4];
-
-   perm[0] = cornerPos[red_white_blue];
-   perm[1] = cornerPos[red_green_yellow];
-   perm[2] = cornerPos[white_green_pink];
-   perm[3] = cornerPos[yellow_blue_pink];
-      
-   GetPermNormalForm(perm,4);
-
-   return (UINT8)GetIndexFromPerm(perm,4);
-}
-void GetD5Index( rbCompState * state, UINT8 id[5])
-{
-   UINT8 edgePos[NEDGECUBELETS],cornerPos[NCORNERCUBELETS];
-
-   GetPermFromIndex( edgePos, state->edgePos, NEDGECUBELETS );
-   GetPermFromIndex( cornerPos, state->cornerPos, NCORNERCUBELETS );
-   
-   //PrintArray(edgePos,NEDGECUBELETS);
-   //printf("\n");
-   //PrintArray(cornerPos,NCORNERCUBELETS);
-  // printf("\n");
-   id[0] = GetEdgePosGroup1Index(edgePos);
-   id[1] = GetEdgePosGroup2Index(edgePos);
-   id[2] = GetEdgePosGroup3Index(edgePos);
-   id[3] = GetCornerPosGroup1Index(cornerPos);
-   id[4] = GetCornerPosGroup2Index(cornerPos);
-}
-
-/*which group*/
-UINT16 GetEdgePositionGroup1(UINT8 * edgePos)
-{
-   UINT8 comb[4];
-   comb[0] = edgePos[green_red];
-   comb[1] = edgePos[red_blue];
-   comb[2] = edgePos[green_pink];
-   comb[3] = edgePos[pink_blue];
-   return GetIndexFromComb(comb,12,4);
-}
-UINT16 GetEdgePositionGroup2(UINT8 * edgePos)
-{
-   UINT8 comb[4];
-   comb[0] = edgePos[blue_yellow];
-   comb[1] = edgePos[yellow_green];
-   comb[2] = edgePos[green_white];
-   comb[3] = edgePos[white_blue];
-
-   /*Actually this can have only 8C4 possibilities. But it is an unnecessary processing
-    * overhead to convert the 12Combination(combination of 12 objects) to an 8Combination,
-    * before we can find out the index of the 8Combination. Resultantly we have to use
-    * a UINT16 to store this index instead of a UINT8 for an 8Combination
-    *
-    * Let up take up this enhancement in phase 2*/
-   return GetIndexFromComb(comb,12,4);/*problem*/
-}
-UINT8 GetCornerPositionGroup1(UINT16 cornerPosId)
-{
-	UINT8 cornerPos[NCORNERCUBELETS];
-	UINT8 comb[4];
-
-	GetPermFromIndex(cornerPos,cornerPosId,NCORNERCUBELETS);
-
-
-	if( curGraphNodePtr < DEBUG_N )
-	{
-		printf("corner pos is: ");
-		PrintArray(cornerPos,NCORNERCUBELETS);
-	}
-	comb[0] = cornerPos[pink_yellow_green];
-	comb[1] = cornerPos[green_white_red];
-	comb[2] = cornerPos[pink_white_blue];
-	comb[3] = cornerPos[blue_red_yellow];
-	return GetIndexFromComb(comb,8,4);
-}
 /*
 #define RED_IN 0
 #define RED_OUT 1
@@ -402,26 +302,6 @@ UINT8 GetCornerPositionGroup1(UINT16 cornerPosId)
 #define YELLOW_IN 10
 #define YELLOW_OUT 11
 */
-void PrintMove(int id)
-{
-	switch(id)
-	{
-		case  RED_IN:printf("red-in ");break;
-		case  RED_OUT:printf("red-out ");break;
-		case  PINK_IN:printf("pink-in ");break;
-		case  PINK_OUT:printf("pink-out ");break;
-		case  GREEN_IN:printf("green-in ");break;
-		case  GREEN_OUT:printf("green-out ");break;
-		case  BLUE_IN:printf("blue-in ");break;
-		case  BLUE_OUT:printf("blue-out ");break;
-		case  WHITE_IN:printf("white-in ");break;
-		case  WHITE_OUT:printf("white-out ");break;
-		case YELLOW_IN:printf("yellow-in ");break;
-		case YELLOW_OUT:printf("yellow-out ");break;
-		default:printf("invalid move %3d",id);break;
-	}
-	printf("-");
-}
 int FinPath[30];
 int FinPath1[30];
 int pathidx=0;
@@ -441,30 +321,6 @@ int PopMove1()
 	else
 		return 12;
 }
-void PrintPathToProblemNode(int id)
-{
-	int move,len=0;
-	printf("path to problem node is:\n");
-	while(id != 0)
-	{
-		PrintMove(Graph1[id].parentMove);
-		PushMove1(Graph1[id].parentMove);
-		id = Graph1[id].parentIndex;
-	}
-	printf("\n");
-
-	printf("**********************************************************************\n");
-	printf("The final solution is:\n");
-	move=PopMove1();
-	while(move<12)
-	{
-		PrintMove(move);
-		len++;
-		move=PopMove1();
-	}
-	printf("\npath length: %d",len);
-	printf("\n**********************************************************************\n");
-}
 void PushMove( int move)
 {
 //printf("pathidx=%d\n",pathidx);
@@ -483,7 +339,7 @@ int PopMove()
 void PrintPathToGoal(int id,int PathArr[],int* ln)
 {	
 	int move;
-	printf("path to goal node from index:%d is:\n",id);
+	//printf("path to goal node from index:%d is:\n",id);
 	while(id != 0)
 	{
         //printf("ln=%d\n",*ln);
@@ -507,77 +363,24 @@ void PrintPathToGoal(int id,int PathArr[],int* ln)
 }
 
 
-void PrintSubTableIndices(rbIndices * index5)
-{
-   printf("sub table indices:\n");
-   printf("Corner Direction index:%d\n",index5->CD);
-   printf("Edge Direction index:%d\n",index5->ED);
-   printf("Edge Position index1:%d\n",index5->EPG1);
-   printf("Edge Position index2:%d\n",index5->EPG2);
-   printf("Corner Position index:%d\n",index5->CPG1);
-}
-void CalculateSubTableIndices(rbCompState * state, rbIndices * indices)
-{
-   UINT8 edgePos[NEDGECUBELETS];
-   
-   indices->CD = GET_CORNER_DIR(state->dir);
-   indices->ED = GET_EDGE_DIR(state->dir);
-
-   GetPermFromIndex(edgePos,state->edgePos,NEDGECUBELETS);
-   //if( curGraphNodePtr < DEBUG_N )
-    //  PrintArray(edgePos,NEDGECUBELETS);
-   indices->EPG1 = GetEdgePositionGroup1(edgePos);
-   indices->EPG2 = GetEdgePositionGroup2(edgePos);
-
-   indices->CPG1 = GetCornerPositionGroup1(state->cornerPos);
-
-
-  // if( curGraphNodePtr < DEBUG_N )
-  // {
-   //   printf("#######\n");
-      //PrintCompState(state);
-    //  printf("cd:%4d, ed:%4d, epg1:%4d epg2:%4d, cpg1:%4d\n",indices->CD,indices->ED,
-//	    indices->EPG1,indices->EPG2,indices->CPG1);
-    //  printf("cur index = %d, red group = %d\n\n",curGraphNodePtr,indices->redGroup);
-
-//      printf("\n\n");
-  // }
-}
-
-void FindRedGraphCount(void);
-void CheckIndices( void )
-{
-   //printf("check indices\n");
-   if( curStateHashIndex.CD == 0/*5856*/ &&
-	 curStateHashIndex.ED == 0/*2656*/ &&
-	 curStateHashIndex.EPG1 == 0/*208*/ &&
-	 curStateHashIndex.EPG2 == 0/*55*/ &&
-	 curStateHashIndex.CPG1 == 0/*58*/)
-   {
-      printf("match node = %d \n",curGraphNodePtr);
-   }
-}
 /*No parameters; The global variable 'curNode' contains the new state to be inserted */
 void AddFinalNodeToGoalGraph(void)
 {
    static UINT8 curLevel=0;
    static INT32 levelCount=0;
+
+   FinalNodeCount++;
+
    Graph[curGraphNodePtr].state = curNode.state;/*node contents - final state;structure copy*/
 
    Graph[curGraphNodePtr].nodeNext = BAD_INDEX;
 
-   UINT8 d5IndexProblemTreeMatchState[5];
-   //printf("FindRedGraphPath_func1\n");
-   GetD5Index(&curNode.state,d5IndexProblemTreeMatchState);
 
-   Graph[curGraphNodePtr].firstInRedGr = 2;
-   Graph[curGraphNodePtr].RedGroup = GetRedGraphGroupId(d5IndexProblemTreeMatchState);
-   Graph[curGraphNodePtr].yesMoves = 0;
    PRINT_TEXT_1INT("AddFinalNodeToGoalGraph, curGraphNodePtr=%d\n",curGraphNodePtr);
    if( goalFlag == GOAL_GRAPH )
    {
       Graph[curGraphNodePtr].parentMove = curNode.parentMove;
-      UPDATE_YES_MOVES(Graph,curGraphNodePtr,curNode.parentMove );
+   //   UPDATE_YES_MOVES(Graph,curGraphNodePtr,curNode.parentMove );
       Graph[curGraphNodePtr].parentIndex = curNode.parentIndex;
       Graph[curGraphNodePtr].level = Graph[curNode.parentIndex].level + 1;
       PRINT_TEXT_1INT("cur level=%d\n",Graph[curGraphNodePtr].level);
@@ -603,7 +406,7 @@ void AddFinalNodeToGoalGraph(void)
       printf("******* end ****\n\n");
    }
    curGraphNodePtr++;
-   CheckIndices();
+   //CheckIndices();
    if(curGraphNodePtr > NODE_COUNT )
    {
 	   printf("cur graph node ptr too large\n");
@@ -611,418 +414,15 @@ void AddFinalNodeToGoalGraph(void)
    }
 }
 
-void AddNodeCPG1Middle(CPG1_t * cpg1NodePrevPtr, CPG1_t * cpg1NodeNextPtr )
-{
-	CPG1_t * tmpCpg1=0;
-	tmpCpg1 = RB_NEW(CPG1_t);
-	PRINT_TEXT("AddNodeCPG1Middle()\n");
-	if( !tmpCpg1 )
-	{
-		printf("could not allocate memory for cpg1\n");
-		exit(0);
-	}
-	cpg1cnt++;
-	cpg1NodePrevPtr->cpg1Next = tmpCpg1;/*parent points to child*/
-	tmpCpg1->cpg1Id = curStateHashIndex.CPG1;/*the level index for the node*/
-	tmpCpg1->cpg1Next = cpg1NodeNextPtr;/*The next in the same level*/
-
-	tmpCpg1->graph = GOAL_GRAPH;
-	tmpCpg1->finalNode = curGraphNodePtr;/*parent points to child*/
-	AddFinalNodeToGoalGraph();
-}
-
-void AddNodeCPG1Begin(EPG2_t * parentEpg2, CPG1_t * cpg1NodeNextPtr )
-{
-	CPG1_t * tmpCpg1=0;
-	tmpCpg1 = RB_NEW(CPG1_t);
-	PRINT_TEXT("AddNodeCPG1Begin()\n");
-	if( !tmpCpg1 )
-	{
-		printf("could not allocate memory for cpg1\n");
-		exit(0);
-	}
-	cpg1cnt++;
-	parentEpg2->cpg1Ptr = tmpCpg1;/*parent points to child*/
-	tmpCpg1->cpg1Id = curStateHashIndex.CPG1;/*the level index for the node*/
-	tmpCpg1->cpg1Next = cpg1NodeNextPtr;/*The next in the same level*/
-
-	tmpCpg1->graph = GOAL_GRAPH;
-	tmpCpg1->finalNode = curGraphNodePtr;/*parent points to child*/
-	AddFinalNodeToGoalGraph();
-
-}
-
-void AddNodeEPG2Middle(EPG2_t * epg2NodePrevPtr, EPG2_t * epg2NodeNextPtr )
-{
-   EPG2_t *tmpEpg2=0;
-   PRINT_TEXT("AddNodeEPG2Middle()\n");
-   tmpEpg2 = RB_NEW(EPG2_t);
-   if( !tmpEpg2 )
-   {
-      printf("could not allocate memory for epg2\n");
-      exit(0);
-   }
-   epg2cnt++;
-   epg2NodePrevPtr->epg2Next = tmpEpg2;/*parent points to child*/
-   tmpEpg2->epg2Id = curStateHashIndex.EPG2;/*the level index for the node*/
-   tmpEpg2->epg2Next = epg2NodeNextPtr;/*The next in the same level*/
-   AddNodeCPG1Begin(tmpEpg2,NULL);
-}
-
-void AddNodeEPG2Begin(EPG1_t * parentEpg1, EPG2_t * epg2NodeNextPtr )
-{
-   EPG2_t *tmpEpg2=0;
-   PRINT_TEXT("AddNodeEPG2Begin()\n");
-   tmpEpg2 = RB_NEW(EPG2_t); 
-   if( !tmpEpg2 )
-   {
-      printf("could not allocate memory for epg2\n");
-      exit(0);
-   }
-   epg2cnt++;
-   parentEpg1->epg2Ptr = tmpEpg2;/*parent points to child*/
-   tmpEpg2->epg2Id = curStateHashIndex.EPG2;/*the level index for the node*/
-   tmpEpg2->epg2Next = epg2NodeNextPtr;/*The next in the same level*/
-   AddNodeCPG1Begin(tmpEpg2,NULL);
-}
-
-void AddNodeEPG1Middle(EPG1_t * epg1NodePrevPtr, EPG1_t * epg1NodeNextPtr )
-{
-   EPG1_t *tmpEpg1=0;
-   tmpEpg1 = RB_NEW(EPG1_t);
-   PRINT_TEXT("AddNodeEPG1Middle()\n");
-   if( !tmpEpg1 )
-   {
-      printf("could not allocate memory for epg1\n");
-      exit(0);
-   }
-   epg1cnt++;
-   epg1NodePrevPtr->epg1Next = tmpEpg1;/*parent points to child*/
-   tmpEpg1->epg1Id = curStateHashIndex.EPG1;/*the level index for the node*/
-   tmpEpg1->epg1Next = epg1NodeNextPtr;/*The next in the same level*/
-   AddNodeEPG2Begin(tmpEpg1,NULL);
-}
-
-void AddNodeEPG1Begin(ED_t * parent, EPG1_t * epg1NodeNextPtr )
-{
-   EPG1_t *tmpEpg1=0;
-   tmpEpg1 = RB_NEW(EPG1_t);
-   PRINT_TEXT("AddNodeEPG1Begin()\n");
-   if( !tmpEpg1 )
-   {
-      printf("could not allocate memory for epg1\n");
-      exit(0);
-   }
-   epg1cnt++;
-   parent->epg1Ptr = tmpEpg1;/*parent points to child*/
-   tmpEpg1->epg1Id = curStateHashIndex.EPG1;/*the level index for the node*/
-   tmpEpg1->epg1Next = epg1NodeNextPtr;/*The next in the same level*/
-
-   AddNodeEPG2Begin(tmpEpg1,NULL);
-}
-
-void AddNodeEdgeDirMiddle(ED_t * edgeDirNodePrevPtr, ED_t * edgeDirNodeNextPtr )
-{
-   ED_t * newEdgeDirNode = RB_NEW(ED_t);
-   PRINT_TEXT("AddNodeEdgeDirMiddle()\n");
-   if( !newEdgeDirNode )
-   {
-      printf("could not allocate memory for ed node\n");
-      exit(0);
-   }
-   edircnt++;
-   newEdgeDirNode->edId = curStateHashIndex.ED;
-   newEdgeDirNode->edNext = edgeDirNodeNextPtr;
-   edgeDirNodePrevPtr->edNext = newEdgeDirNode;
-
-   AddNodeEPG1Begin(newEdgeDirNode,NULL);
-}
-
-/*add in the beginning of edge direction linked list*/
-void AddNodeEdgeDirBegin(ED_t * edgeDirNodeNextPtr )
-{
-   ED_t * newEdgeDirNode = RB_NEW(ED_t);
-   PRINT_TEXT("AddNodeEdgeDirBegin()\n");
-   if( !newEdgeDirNode )
-   {
-      printf("could not allocate memory for ed node\n");
-      exit(0);
-   }
-   edircnt++;
-   newEdgeDirNode->edId = curStateHashIndex.ED;
-   newEdgeDirNode->edNext = edgeDirNodeNextPtr;
-   CDTable[curStateHashIndex.CD].edPtr = newEdgeDirNode;
-   
-   AddNodeEPG1Begin(newEdgeDirNode,NULL);
-}
-static int cpg1singleNode=0;
-CPG1_t* ConvertCpg1ToArray(CPG1_t * cpg1NodePtr,int *cpg1Cnt )
-{
-	int cpg1count=0;
-	CPG1_t * cpg1NodePtrTmp=cpg1NodePtr;
-	CPG1_t * cpg1NodePtrTmp1;
-	CPG1_t * newCpg1Array;
-	while(cpg1NodePtrTmp)
-	{
-		cpg1NodePtrTmp=cpg1NodePtrTmp->cpg1Next;
-		cpg1count++;
-	}
-
-	if(cpg1count==0)
-	{
-	printf("****cpg1count is zero*******\n");
-	}
-	else if(cpg1count==1)
-	{
-	    cpg1singleNode++;
-	}
-	newCpg1Array = RB_NEW_ARRAY(CPG1_t,cpg1count);
-	PRINT_TEXT("ConvertCpg1ToArray()\n");
-	if( !newCpg1Array )
-	{
-	    *cpg1Cnt = 0;
-		printf("could not allocate memory for cpg1 Array\n");
-		exit(0);
-	}
-	*cpg1Cnt = cpg1count;
-	if (cpg1count > 200)
-	{
-	    printf("cpg1count=%d too big\n",cpg1count);
-	}
-	cpg1NodePtrTmp=cpg1NodePtr;
-	cpg1count=0;
-	while(cpg1NodePtrTmp)
-	{
-		newCpg1Array[cpg1count].cpg1Id = cpg1NodePtrTmp->cpg1Id;
-	    //printf("conv cpg1id=%d E\n",cpg1NodePtrTmp->cpg1Id);
-		newCpg1Array[cpg1count].finalNode = cpg1NodePtrTmp->finalNode;
-		cpg1count++;
-		cpg1NodePtrTmp1=cpg1NodePtrTmp;
-		cpg1NodePtrTmp=cpg1NodePtrTmp->cpg1Next;
-		free(cpg1NodePtrTmp1);
-	}
-	return newCpg1Array;
-}
-static int epg2singleNode;
-EPG2_t* ConvertEpg2ToArray(EPG2_t * epg2NodePtr,int *epg2Cnt )
-{
-	int epg2count=0;
-	int cpg1Cnt=0;
-	EPG2_t * epg2NodePtrTmp=epg2NodePtr;
-	EPG2_t * epg2NodePtrTmp1;
-	EPG2_t * newEpg2Array;
-	while(epg2NodePtrTmp)
-	{
-		epg2NodePtrTmp=epg2NodePtrTmp->epg2Next;
-		epg2count++;
-	}
-	if(epg2count==0)
-	{
-	printf("****epg2count is zero*******\n");
-	}
-	else if(epg2count==1)
-	{
-	    epg2singleNode++;
-	}
-	newEpg2Array = RB_NEW_ARRAY(EPG2_t,epg2count);
-	PRINT_TEXT("ConvertEpg2ToArray()\n");
-	if( !newEpg2Array )
-	{
-		printf("could not allocate memory for epg2 Array\n");
-		*epg2Cnt = 0;
-		exit(0);
-	}
-	*epg2Cnt = epg2count;
-	epg2NodePtrTmp=epg2NodePtr;
-	epg2count=0;
-	while(epg2NodePtrTmp)
-	{
-		newEpg2Array[epg2count].epg2Id = epg2NodePtrTmp->epg2Id;
-	    //printf("conv epg2id=%d ",epg2NodePtrTmp->epg2Id);
-		newEpg2Array[epg2count].cpg1Ptr = ConvertCpg1ToArray(epg2NodePtrTmp->cpg1Ptr,&cpg1Cnt);
-		newEpg2Array[epg2count].cpg1Cnt = cpg1Cnt;
-		if (cpg1Cnt > 200)
-		{
-			printf("line:%d cpg1count=%d too big\n",__LINE__,cpg1Cnt);
-		}
-		epg2count++;
-		epg2NodePtrTmp1=epg2NodePtrTmp;
-		epg2NodePtrTmp=epg2NodePtrTmp->epg2Next;
-		free(epg2NodePtrTmp1);
-	}
-	return newEpg2Array;
-}
-static int epg1singleNode;
-EPG1_t* ConvertEpg1ToArray(EPG1_t * epg1NodePtr, int *epg1Cnt )
-{
-	int epg1count=0;
-	int epg2Cnt=0;
-	EPG1_t * epg1NodePtrTmp=epg1NodePtr;
-	EPG1_t * epg1NodePtrTmp1;
-	EPG1_t * newEpg1Array;
-	while(epg1NodePtrTmp)
-	{
-		epg1NodePtrTmp=epg1NodePtrTmp->epg1Next;
-		epg1count++;
-	}
-	if(epg1count==0)
-	{
-	printf("****epg1count is zero*******\n");
-	}
-	else if(epg1count==1)
-	{
-	    epg1singleNode++;
-	}
-	newEpg1Array = RB_NEW_ARRAY(EPG1_t,epg1count);
-	PRINT_TEXT("ConvertEpg1ToArray()\n");
-	if( !newEpg1Array )
-	{
-	    *epg1Cnt = 0;
-		printf("could not allocate memory for epg1 Array\n");
-		exit(0);
-	}
-	*epg1Cnt = epg1count;
-	epg1NodePtrTmp=epg1NodePtr;
-	epg1count=0;
-	while(epg1NodePtrTmp)
-	{
-		newEpg1Array[epg1count].epg1Id = epg1NodePtrTmp->epg1Id;
-	    //printf("conv epg1id=%d ",epg1NodePtrTmp->epg1Id);
-		newEpg1Array[epg1count].epg2Ptr = ConvertEpg2ToArray(epg1NodePtrTmp->epg2Ptr,&epg2Cnt);
-		newEpg1Array[epg1count].epg2Cnt = epg2Cnt;
-		epg1count++;
-		epg1NodePtrTmp1=epg1NodePtrTmp;
-		epg1NodePtrTmp=epg1NodePtrTmp->epg1Next;
-		free(epg1NodePtrTmp1);
-	}
-	return newEpg1Array;
-}
-static int edsingleNode;
-ED_t* ConvertEdgeDirToArray(ED_t * edNodePtr,int *edCnt )
-{
-	int edcount=0;
-	int epg1Cnt=0;
-	ED_t * edNodePtrTmp=edNodePtr;
-	ED_t * edNodePtrTmp1;
-	ED_t * newEdgeDirArray;
-	while(edNodePtrTmp)
-	{
-		edNodePtrTmp=edNodePtrTmp->edNext;
-		edcount++;
-	}
-	if(edcount==0)
-	{
-	printf("****edcount is zero*******\n");
-	}
-	else if(edcount==1)
-	{
-	    edsingleNode++;
-	}
-	newEdgeDirArray = RB_NEW_ARRAY(ED_t,edcount);
-	PRINT_TEXT("ConvertEdgeDirToArray()\n");
-	if( !newEdgeDirArray )
-	{
-		printf("could not allocate memory for ed array\n");
-		*edCnt = 0;
-		exit(0);
-	}
-	*edCnt = edcount;
-	edNodePtrTmp=edNodePtr;
-	edcount=0;
-	while(edNodePtrTmp)
-	{
-		newEdgeDirArray[edcount].edId = edNodePtrTmp->edId;
-	    //printf("conv edId=%d ",edNodePtrTmp->edId);
-		newEdgeDirArray[edcount].epg1Ptr = ConvertEpg1ToArray(edNodePtrTmp->epg1Ptr,&epg1Cnt);
-		newEdgeDirArray[edcount].epg1Cnt = epg1Cnt;
-		edcount++;
-		edNodePtrTmp1=edNodePtrTmp;
-		edNodePtrTmp=edNodePtrTmp->edNext;
-		free(edNodePtrTmp1);
-	}
-	return newEdgeDirArray;
-}
-void SanityCheckCpg1Array(CPG1_t *cpg1Ptr, int cpg1Cnt)
-{
-	int i;
-	for(i=0;i<cpg1Cnt;i++)
-	{
-	}
-}
-void SanityCheckEpg2Array(EPG2_t *epg2Ptr, int epg2Cnt)
-{
-	int i;
-	for(i=0;i<epg2Cnt;i++)
-	{
-		if(epg2Ptr[i].cpg1Cnt>200)
-		{
-			printf("%d epg2=%d cpg1count=%d\n",__LINE__,i,epg2Ptr[i].cpg1Cnt);
-		}
-		SanityCheckCpg1Array(epg2Ptr[i].cpg1Ptr,epg2Ptr[i].cpg1Cnt);
-	}
-}
-void SanityCheckEpg1Array(EPG1_t *epg1Ptr, int epg1Cnt)
-{
-	int i;
-	for(i=0;i<epg1Cnt;i++)
-	{
-		if(epg1Ptr[i].epg2Cnt>200)
-		{
-			printf("%d epg1=%d epg2count=%d\n",__LINE__,i,epg1Ptr[i].epg2Cnt);
-		}
-		SanityCheckEpg2Array(epg1Ptr[i].epg2Ptr,epg1Ptr[i].epg2Cnt);
-	}
-}
-void SanityCheckEdgeDirArray(ED_t * edPtr,int edCnt)
-{
-	int i;
-	for(i=0;i<edCnt;i++)
-	{
-		if(edPtr[i].epg1Cnt>200)
-		{
-			printf("%d edir=%d epg1count=%d\n",__LINE__,i,edPtr[i].epg1Cnt);
-		}
-		SanityCheckEpg1Array(edPtr[i].epg1Ptr,edPtr[i].epg1Cnt);
-	}
-}
-void SanityCheckArray()
-{
-	int cdir;
-	for(cdir=0;cdir<POWER3_8;cdir++)
-		if( CDTable[cdir].edPtr != NULL )
-		{
-			if( CDTable[cdir].edCnt > 4000)
-			{
-				printf("%d cdir=%d edcount=%d\n",__LINE__,cdir,CDTable[cdir].edCnt);
-			}
-			SanityCheckEdgeDirArray(CDTable[cdir].edPtr,CDTable[cdir].edCnt);
-		}
-}
-/*convert each linked list in the 5 tier linked list to an array*/
-void ConertGraphToArray(void)
-{
-    int cdir;
-	int edCnt=0;
-	for(cdir=0;cdir<POWER3_8;cdir++)
-	    if( CDTable[cdir].edPtr != NULL )
-		{
-            CDTable[cdir].edPtr = ConvertEdgeDirToArray(CDTable[cdir].edPtr,&edCnt);
-            CDTable[cdir].edCnt = edCnt;
-		}
-
-	printf( "edsnglcnt=%d epg1sgnlcnt=%d, epg2snglcnt=%d,cpg1snglcnt=%d\n",   edsingleNode, epg1singleNode, epg2singleNode, cpg1singleNode);
-    SanityCheckArray();
-}
-BOOLEAN Find(rbCompState * state);
+BOOLEAN Find(rbCubeState * state);
+void convert_whatisin_to_whereis(rbCubeState *whatisin_state,rbCubeState *whereis_state);
 /*return 2 for found in red graph*/
 BOOLEAN FindGraph(int cpg1PtrFinalNode )
 {
-    int found=0;
 	INT32 index = cpg1PtrFinalNode;
 	INT32 indexPrev=BAD_INDEX;
-    rbCubeState stFull,diff,st1Full;
-    rbCompState diffComp;
 	int x=0;
+    UINT8 compare=0;
 	PRINT_TEXT_1INT("FindGraph(), index=%d\n",index);
 	/*The first index will not be */
 	if(index == BAD_INDEX )
@@ -1035,39 +435,32 @@ BOOLEAN FindGraph(int cpg1PtrFinalNode )
 
 	while( index != BAD_INDEX )
     {
-        UINT8 searchStateRedGroup;
+        //UINT8 searchStateRedGroup;
         x++;
-        if( x > 1000 )
+        if( x > 64 )
         {
-            printf("while loop too long FindGraph\n");
-            getchar();
+            printf("while loop too long FindGraph \n");
+            //getchar();
         }
-        //PrintPathToGoal(index);
-        //PrintCompState(&(Graph[index].state));
-        //PrintCompState(&(Graph[index].state));
-        UINT8 d5IndexProblemTreeMatchState[5];
-        //printf("%s\n",__func__);
-        GetD5Index(&searchState,d5IndexProblemTreeMatchState);
 
-        searchStateRedGroup = GetRedGraphGroupId(d5IndexProblemTreeMatchState);
-        if (/*(Graph[index].RedGroup == searchStateRedGroup) &&*/
-                IsCompStateEqual(&(Graph[index].state),&(searchState))/*this condition is redundant*/
-           )
+        //printf("redgroup matched index=%d redgroup=%d\n",index,Graph[index].RedGroup);
+        if( CompareFullStates(&(Graph[index].state),&(searchState))/*this condition is redundant*/)
         {
             problemTreeMatchState = searchState;
             goalTreeMatchState = Graph[index].state;
-            //FindRedGraphPath();
-            GetRBStateFullFromComp( &(Graph[index].state), &stFull);
-            //TODO PrintFullN(&stFull,"match state Full");
-            GetRBStateFullFromComp( &(searchState), &st1Full);
-            //TODO PrintFullN(&st1Full,"search State Full");
-            printf("Exact Match found in function %s at index=%d!!!\n",__func__,index);
+            //printf("Exact Match found in function %s at index=%d!!!\n",__func__,index);
             //PrintPathToGoal(index,gFindLevel?PathRed:PathGoal,gFindLevel?(&plnRed):(&plnGoal));
             PrintPathToGoal(index,PathGoal,&plnGoal);
             return TRUE;
         }
         else
         {
+            //rbCubeState s1,s2;
+            //convert_whatisin_to_whereis( &(Graph[index].state),&s1);
+            //convert_whatisin_to_whereis( &(searchState),&s2);/*this condition is redundant*/
+            //if( CompareFullStatesT(&s1,&s2))
+            //    printf("tripod match\n");
+            //printf("redgroup matched index=%d but state didn't match\n",index);
             indexPrev = index;
             index = Graph[index].nodeNext;
             PRINT_TEXT_1INT("function Find, new index=%d\n",index);
@@ -1079,418 +472,213 @@ BOOLEAN FindGraph(int cpg1PtrFinalNode )
         return FALSE;
     }
 
-    if (gFindLevel >= 1)
-        return FALSE;
+    //if (gFindLevel >= 1)
+      //  return FALSE;
 
-    gFindLevel++;
-	/*GetRBStateFullFromComp( &(Graph[ cpg1Ptr->finalNode ].state), &stFull);
-	//PrintFullN(&stFull,"match state Full");
-	RbCubeConfigDiff(&st1Full, &stFull, &diff);
-	//PrintFullN(&diff,"diff");
-	GetRBStateCompFromFull(&diff, &diffComp);
-    printf("calling Find for diff findlevel:%d\n",gFindLevel);
-    searchState = diffComp;
-	found = Find(&diffComp); 
-	if( found )
-    {
-        printf("Exact Match Found i=%d\n",cpg1Ptr->finalNode);
-        PrintPathToGoal(cpg1Ptr->finalNode,PathGoal,&plnGoal);
-        //PrintPathToProblemNode(j);
-        return found;
-    }*/
+    //gFindLevel++;
 
 
 	PRINT_TEXT_1INT("FindGraph, last index found=%d\n",indexPrev);
 	return FALSE;
 }
-void InsertGraph(CPG1_t * cpg1Ptr )
+static rbCubeState parent_state,child_state;
+static rIndex parent_index;
+void InsertGraph(int finalNode )
 {
-	INT32 index = cpg1Ptr->finalNode;
-	INT32 indexPrev=BAD_INDEX;
-	int x=0;
-	PRINT_TEXT_1INT("InsertGraph(), index=%d\n",index);
-	/*The first index will not be */
-	if(index == BAD_INDEX )
-		printf("error: first index -1 \n");
+    INT32 index = finalNode;
+    INT32 indexPrev=BAD_INDEX;
+    int x=0;
+    PRINT_TEXT_1INT("InsertGraph(), index=%d\n",index);
+    //printf(" - InsertGraph(), index=%d  ",index);
+    /*The first index will not be */
+    if(index == BAD_INDEX )
+        printf("error: first index -1 \n");
 
-	while( index != BAD_INDEX )
-	{
-		x++;
-		if( x > 100000 )
-		{
-			printf("while loop too long InsertGraph\n");
-			getchar();
-		}
-		if(IsCompStateEqual(&(Graph[index].state),&(curNode.state)))
-		{
-			UPDATE_YES_MOVES(Graph,index,curNode.parentMove);
-			//printf("yes move found\n");
-			return;
-		}
-		else
-		{
-			indexPrev = index;
-			index = Graph[index].nodeNext;
-			PRINT_TEXT_1INT("function InsertGraph, new index=%d\n",index);
-		}
-	}
-	if(indexPrev == BAD_INDEX )
-		printf("error: indexPrev cannot be bad\n");
+    while( index != BAD_INDEX )
+    {
+        x++;
+        if( x > 199 )
+        {
+            printf("while loop too long InsertGraph x=%d\n",x);
+            //return;
+            //getchar();
+        }
+        if(CompareFullStates(&(Graph[index].state),&(curNode.state)) )
+        {
+            //printf("config exists\n");
+            //printf("yes move found\n");
+            return;
+        }
+        else
+        {
+            indexPrev = index;
+            index = Graph[index].nodeNext;
+            PRINT_TEXT_1INT("function InsertGraph, new index=%d\n",index);
+            //printf("function InsertGraph, new index=%d\n",index);
+        }
+    }
+    if(x==24)
+        printf("finalNode=%d x=%d\n",finalNode,x);
+    if(indexPrev == BAD_INDEX )
+        printf("error: indexPrev cannot be bad\n");
 
-	Graph[indexPrev].nodeNext = curGraphNodePtr;
+    Graph[indexPrev].nodeNext = curGraphNodePtr;
+    InsertGraphCount++;
 
-	PRINT_TEXT_1INT("InsertGraph, last index found=%d\n",indexPrev);
-	AddFinalNodeToGoalGraph();
+    PRINT_TEXT_1INT("InsertGraph, last index found=%d\n",indexPrev);
+    AddFinalNodeToGoalGraph();
 }
 void RB_ExitProper(void)
 {
    int i;
-   CalcPaths();
    printf("kswjehfksdhfksdhfksjdhfkjhdf\nskdjfhskdjhfksjdfh\n");
    for(i=0;i<172361;i++)
       ;
    //exit(0);
 }
 
-void InsertCpg1(EPG2_t * parent )
+    int eposT[9] = {0,1,3,4,5,7,8,10,11};
+    int cposT[4] = {3,4,5,7};
+    /*
+int KEY(rbCubeState * state)
 {
-	int x=0;
-	UINT16 cpg1Id = curStateHashIndex.CPG1;
-	CPG1_t * cpg1NodePtr = parent->cpg1Ptr;
-	PRINT_TEXT("InsertCpg1()\n");
-	if( cpg1Id < cpg1NodePtr->cpg1Id )
-	{
-		AddNodeCPG1Begin( parent, cpg1NodePtr );
-		return;
-	}
-	else if( cpg1Id == cpg1NodePtr->cpg1Id )
-	{
-		InsertGraph(cpg1NodePtr);
-		return;
-	}
-	else
-	{
-		CPG1_t * prevCpg1NodePtr = cpg1NodePtr;
-		cpg1NodePtr = cpg1NodePtr->cpg1Next;
-		while(cpg1NodePtr)
-		{
-			x++;
-			if( x > 100 )
-			{
-				printf("while loop too long InsertCpg1\n");
-				getchar();
-			}
-			if( cpg1Id < cpg1NodePtr->cpg1Id )
-			{
-				AddNodeCPG1Middle( prevCpg1NodePtr, cpg1NodePtr);
-				return;
-			}
-			else if( cpg1Id == cpg1NodePtr->cpg1Id )
-			{
-				InsertGraph(cpg1NodePtr);
-				return;
-			}
-			else
-			{
-				prevCpg1NodePtr = cpg1NodePtr;
-				cpg1NodePtr = cpg1NodePtr->cpg1Next;
-			}
-		}
-		AddNodeCPG1Middle( prevCpg1NodePtr, NULL);
-	}
-}
-void InsertEpg2(EPG1_t * parent )
+    int x,y;
+    x = state->edgePos[eposT[0]];
+    x <<= 5;
+    x |= state->edgePos[eposT[1]];
+    x <<= 5;
+    x |= state->edgePos[eposT[2]];
+    x <<= 5;
+    x |= state->edgePos[eposT[3]];
+    x <<= 5;
+    x |= state->edgePos[eposT[4]];
+    x <<= 5;
+    x |= state->edgePos[eposT[5]];
+
+    y = state->edgePos[eposT[6]];
+    y <<= 5;
+    y |= state->edgePos[eposT[7]];
+    y <<= 5;
+    y |= state->edgePos[eposT[8]];
+    y <<= 5;
+    y |= state->cornerPos[cposT[0]];
+    y <<= 5;
+    y |= state->cornerPos[cposT[1]];
+    y <<= 5;
+    y |= state->cornerPos[cposT[2]];
+    y ^= state->cornerPos[cposT[3]];
+    return (x ^ y)&0x0FFFFFFF;
+
+}*/
+int KEY(rbCubeState * state)
 {
-	UINT16 epg2Id = curStateHashIndex.EPG2;
-	EPG2_t * epg2NodePtr = parent->epg2Ptr;
-	PRINT_TEXT("InsertEpg2()\n");
-	if( epg2Id < epg2NodePtr->epg2Id )
-	{
-		AddNodeEPG2Begin( parent, epg2NodePtr );
-		return;
-	}
-	else if( epg2Id == epg2NodePtr->epg2Id )
-	{
-		InsertCpg1(epg2NodePtr);//continue search in the next dimension
-		return;
-	}
-	else
-	{
-		EPG2_t * prevEpg2NodePtr = epg2NodePtr;
-		epg2NodePtr = epg2NodePtr->epg2Next;
-		int x=0;
-		while(epg2NodePtr)
-		{
-			x++;
-			if( x > 500 )
-			{
-				printf("while loop too long InsertEpg2\n");
-				return;
-			}
+    int x,y,z;
+    x = state->edgePos[0];
+    x <<= 5;
+    x |= state->edgePos[1];
+    x <<= 5;
+    x |= state->edgePos[2];
+    x <<= 5;
+    x |= state->edgePos[3];
+    x <<= 5;
+    x |= state->edgePos[4];
+    x <<= 5;
+    x |= state->edgePos[5];
 
-			if( epg2Id < epg2NodePtr->epg2Id )
-			{
-				AddNodeEPG2Middle( prevEpg2NodePtr, epg2NodePtr);
-				return;
-			}
-			else if( epg2Id == epg2NodePtr->epg2Id )
-			{
-				InsertCpg1(epg2NodePtr);//continue search in the next dimension
-				return;
-			}
-			else
-			{
-				prevEpg2NodePtr = epg2NodePtr;
-				epg2NodePtr = epg2NodePtr->epg2Next;
-			}
-		}
-		AddNodeEPG2Middle( prevEpg2NodePtr, NULL);
-	}
+    y = state->edgePos[6];
+    y <<= 5;
+    y |= state->edgePos[7];
+    y <<= 5;
+    y |= state->edgePos[8];
+    y <<= 5;
+    y |= state->edgePos[9];
+    y <<= 5;
+    y |= state->edgePos[10];
+    y <<= 5;
+    y |= state->edgePos[11];
+    
+    z = state->cornerPos[0];
+    z <<= 5;
+    z |= state->cornerPos[1];
+    z <<= 5;
+    z |= state->cornerPos[2];
+    z <<= 5;
+    z |= state->cornerPos[3];
+    z <<= 5;
+    z |= state->cornerPos[4];
+    z <<= 5;
+    z |= state->cornerPos[5];
+    //return (x ^ z)&0x0FFFFFFF;
+    return (x ^ y ^ z)&0x0FFFFFFF;
+
 }
-void InsertEpg1(ED_t * parent )
+void convert_whatisin_to_whereis(rbCubeState *whatisin_state,rbCubeState *whereis_state)
 {
-	UINT16 epg1Id = curStateHashIndex.EPG1;
-	EPG1_t * epg1NodePtr = parent->epg1Ptr;
-	PRINT_TEXT("InsertEpg1()\n");
-	if( epg1Id < epg1NodePtr->epg1Id )
-	{
-		AddNodeEPG1Begin( parent, epg1NodePtr );
-		return;
-	}
-	else if( epg1Id == epg1NodePtr->epg1Id )
-	{
-		InsertEpg2(epg1NodePtr);//continue search in the next dimension
-		return;
-	}
-	else
-	{
-		EPG1_t * prevEpg1NodePtr = epg1NodePtr;
-		epg1NodePtr = epg1NodePtr->epg1Next;
-		int x=0;
-		while(epg1NodePtr)
-		{
-			if( x > 1000 )
-			{
-				printf("while loop too long InsertEpg1\n");
-				return;
-
-			}
-			x++;   
-			if( epg1Id < epg1NodePtr->epg1Id )
-			{
-				AddNodeEPG1Middle( prevEpg1NodePtr, epg1NodePtr);
-				return;
-			}
-			else if( epg1Id == epg1NodePtr->epg1Id )
-			{
-				InsertEpg2(epg1NodePtr);//continue search in the next dimension
-				return;
-			}
-			else
-			{
-				prevEpg1NodePtr = epg1NodePtr;
-				epg1NodePtr = epg1NodePtr->epg1Next;
-			}
-		}
-		AddNodeEPG1Middle( prevEpg1NodePtr, NULL);
-	}
+   // *whereis_state = *whatisin_state;
+    int i;
+    for(i=0;i<12;i++)
+        whereis_state->edgePos[0x0F & whatisin_state->edgePos[i]] = i | (whatisin_state->edgePos[i] & 0x10);
+    for(i=0;i<8;i++)
+        whereis_state->cornerPos[0x07 & whatisin_state->cornerPos[i]] = i | (whatisin_state->cornerPos[i] & 0x18);
+        
 }
-void InsertEdgeDir(ED_t * edNodePtr )
-{
-	UINT16 edId = curStateHashIndex.ED;
-	/*new edge dir id could be less, equal or more*/
-
-	/*1. Less than the first node edge dir index*/
-	PRINT_TEXT("InsertEdgeDir()\n");
-	if( edId < edNodePtr->edId )
-	{
-		AddNodeEdgeDirBegin( edNodePtr);
-		return;
-	}
-	else if( edId == edNodePtr->edId )
-	{
-		InsertEpg1(edNodePtr);//continue search in the next dimension
-		return;
-	}
-	else
-	{
-		ED_t * prevEdNodePtr = edNodePtr;
-		edNodePtr = edNodePtr->edNext;
-		int x=0;
-		while(edNodePtr)
-		{
-			if(x> 5000)
-			{
-				printf("while loop too long InsertEdgeDir\n");
-				return;
-			}
-			x++;
-			if( edId < edNodePtr->edId )
-			{
-				AddNodeEdgeDirMiddle( prevEdNodePtr, edNodePtr);
-				return;
-			}
-			else if( edId == edNodePtr->edId )
-			{
-				InsertEpg1(edNodePtr);//continue search in the next dimension
-				return;
-			}
-			else
-			{
-				prevEdNodePtr = edNodePtr;
-				edNodePtr = edNodePtr->edNext;
-			}
-		}
-
-		AddNodeEdgeDirMiddle( prevEdNodePtr, NULL);
-	}
-}
-
+int insgr=0;
+int addgr=0;
+//#define KEY(x,y,z) (((x>>4)<<4) | (y & 0x000F)  )
 /*No parameters; The global variable 'curNode' contains the new state to be inserted*/
 void Insert(void)
 {
 	PRINT_TEXT("Insert()\n");
-	CalculateSubTableIndices( &(curNode.state),&curStateHashIndex);
+    rbCubeState whereis_state;
+    //convert_whatisin_to_whereis(&curNode.state,&whereis_state);
+    int key= KEY(&curNode.state);
+    //int key= KEY(&whereis_state);
 
-	//PrintSubTableIndices(&curStateHashIndex);
-	CheckIndices();
-	if( CDTable[curStateHashIndex.CD].edPtr == NULL )
-	{
-		AddNodeEdgeDirBegin( NULL );
-	}
-	else
-	{
-		InsertEdgeDir(CDTable[curStateHashIndex.CD].edPtr);
-	}
+    //printf("key=%d\n",key);
+    //printf("EPosTable[key]=%d\n",EPosTable[key]);
+
+    if (EPosTable[key] == BAD_INDEX)
+    {
+        EPosTable[key] = curGraphNodePtr;
+        //printf("Insert() 1\n");
+        AddFinalNodeToGoalGraph();
+        addgr++;
+    }
+    else
+    {
+        //printf("Insert() 2\n");
+        insgr++;
+        InsertGraph(EPosTable[key]);
+    }
+
 
 }
-BOOLEAN FindCpg1(CPG1_t * cpg1NodePtr, int cpg1Cnt)
+BOOLEAN Find(rbCubeState * state)
 {
-	UINT16 cpg1Id = curStateHashIndex.CPG1;
+    rbCubeState whereis_state;
+    //convert_whatisin_to_whereis(state,&whereis_state);
+    int key= KEY(state);
+    //int key= KEY(&whereis_state);
 
-	int low=0,mid,high=cpg1Cnt-1;
-	while(low<=high)
-	{
-		mid = (low+high)/2;
-		if (cpg1Id < cpg1NodePtr[mid].cpg1Id)
-		{
-			high = mid - 1;
-		}
-		else if (cpg1Id == cpg1NodePtr[mid].cpg1Id)
-			return FindGraph(cpg1NodePtr[mid].finalNode);
-		else
-		{
-			low = mid + 1;
-		}
-	}
-	return 0;
-}
-BOOLEAN FindEpg2(EPG2_t * epg2NodePtr, int epg2Cnt)
-{
-	UINT16 epg2Id = curStateHashIndex.EPG2;
-
-	int low=0,mid,high=epg2Cnt-1;
-	while(low<=high)
-	{
-		mid = (low+high)/2;
-		if (epg2Id < epg2NodePtr[mid].epg2Id)
-		{
-			high = mid - 1;
-		}
-		else if (epg2Id == epg2NodePtr[mid].epg2Id)
-			return FindCpg1(epg2NodePtr[mid].cpg1Ptr,epg2NodePtr[mid].cpg1Cnt);
-		else
-		{
-			low = mid + 1;
-		}
-	}
-	return 0;
-}
-BOOLEAN FindEpg1(EPG1_t * epg1NodePtr, int epg1Cnt )
-{
-	UINT16 epg1Id = curStateHashIndex.EPG1;
-	int low=0,mid,high=epg1Cnt-1;
-	while(low<=high)
-	{
-		mid = (low+high)/2;
-		if (epg1Id < epg1NodePtr[mid].epg1Id)
-		{
-			high = mid - 1;
-		}
-		else if (epg1Id == epg1NodePtr[mid].epg1Id)
-			return FindEpg2(epg1NodePtr[mid].epg2Ptr,epg1NodePtr[mid].epg2Cnt);
-		else
-		{
-			low = mid + 1;
-		}
-	}
-	return 0;
-}
-BOOLEAN FindEdgeDir(ED_t * edNodePtr, int edCnt)
-{
-	UINT16 edId = curStateHashIndex.ED;
-
-	int low=0,mid,high=edCnt-1;
-	while(low<=high)
-	{
-		mid = (low+high)/2;
-		if (edId < edNodePtr[mid].edId)
-		{
-			high = mid - 1;
-		}
-		else if (edId == edNodePtr[mid].edId)
-			return FindEpg1(edNodePtr[mid].epg1Ptr,edNodePtr[mid].epg1Cnt);
-		else
-		{
-			low = mid + 1;
-		}
-	}
-	return 0;
-}
-BOOLEAN Find(rbCompState * state)
-{
-	CalculateSubTableIndices( state, &curStateHashIndex);
-
-
-	//PrintSubTableIndices(&curStateHashIndex);
-	/*printf("\nFind CD:%d ED:%d EPG1:%d EPG2:%d CPG1:%d\n",
-	curStateHashIndex.CD,
-	curStateHashIndex.ED,
-	curStateHashIndex.EPG1,
-	curStateHashIndex.EPG2,
-	curStateHashIndex.CPG1
-	);
-	curStateHashIndex.CD=25;
-	curStateHashIndex.ED=456;
-	curStateHashIndex.EPG1=13;
-	curStateHashIndex.EPG2=350;
-	curStateHashIndex.CPG1=47;*/
-
-	if( CDTable[curStateHashIndex.CD].edPtr == NULL )
-	{
-		return 0;
-	}
-	else
-	{
-//			printf("iFind %s =\n",__func__);
-		return FindEdgeDir(CDTable[curStateHashIndex.CD].edPtr,CDTable[curStateHashIndex.CD].edCnt);
-	}
+    if(EPosTable[key]==BAD_INDEX)
+        return 0;
+    else
+        return FindGraph(EPosTable[key]);
 }
 
-void calc_graph(FinalNode * gr, UINT8 flag, rbCompState * startState)
+void calc_graph(FinalNode * gr, UINT8 flag, rbCubeState * startState)
 {
-	rbCubeState parent_full,child_full;
+	rbCubeState parent_full;
 
 	goalFlag = flag;
 	//   PrintCompState(startState);
 	curNode.state = (*startState);
-	PrintCompState(&(curNode.state));
 	Insert();
 	goalFlag++;
 	for(curNode.parentIndex=0;curNode.parentIndex<PARENT_COUNT;
 			curNode.parentIndex++)
     {
-        GetRBStateFullFromComp( &(gr[curNode.parentIndex].state), &parent_full);
+        parent_full = Graph[curNode.parentIndex].state;
         //printf("---------------------------------\n");
         //printf("parent node is:\n");
         //PrintFull(&parent_full);
@@ -1503,12 +691,10 @@ void calc_graph(FinalNode * gr, UINT8 flag, rbCompState * startState)
             PRINT_TEXT_1INT("parent level=%d\n",gr[curNode.parentIndex].level);
             if( 1/*(gr[curNode.parentIndex].yesMoves & MOVE_MASK(curNode.parentMove) ) == 0*/)
             {
-                GetChildComp1(&parent_full,&(curNode.state),curNode.parentMove);
-                //GetRBStateFullFromComp( &(curNode.state), &child_full);
+                GetChild(&parent_full,&(curNode.state),curNode.parentMove);
                 //printf("child node is:\n");
-                //PrintFull(&child_full);
+                //PrintFull(&curNode.state);
                 //if(curGraphNodePtr < DEBUG_N )
-                //PrintCompState(&(curNode.state));
                 Insert();
 
                 PRINT_TEXT("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
@@ -1539,20 +725,18 @@ void calc_graph(FinalNode * gr, UINT8 flag, rbCompState * startState)
 	printf("Graph node count = %d\n",curGraphNodePtr);
 	printf("Graph1 node count = %d\n",curGraph1NodePtr);
 }
-/*InitCDTable: Initialize corner direction values table
- * This is the fist tier of the hash table*/
-static void InitCDTable( void )
+void printrbCubeState( rbCubeState * state )
 {
-	int i;
-	for(i=0;i<POWER3_8;i++)
-	{
-		CDTable[i].edPtr = NULL;
-		CDTable[i].edCnt = 0;
-	}
-}
-void printRbCompState( rbCompState * state )
-{
-   printf("The RB Compressed state is:%d,%d,%d\n",state->edgePos,state->cornerPos,state->dir);
+    int i;
+    printf("The RB state is:\n");
+    printf("  edge:");
+    for(i=0;i<12;i++)
+        printf("%2d ",state->edgePos[i]);
+    printf("\n");
+    printf("corner:");
+    for(i=0;i<8;i++)
+        printf("%2d ",state->cornerPos[i]);
+    printf("\n");
 }
 
 /*Allocate memory for the arrays where the actual nodes are stored*/
@@ -1564,18 +748,10 @@ void AllocateGraphs(void)
       printf("could not allocate memory to Graph\n");
       exit(0);
    }
-   Graph1 = NULL;
-//   Graph1 = (FinalNode*)malloc(sizeof(FinalNode)*NODE_COUNT);
- //  if( !Graph1 )
-  // {
-  //    printf("could not allocate memory to Graph1\n");
-  //    exit(0);
-  // }
 }
 void FreeGraphs(void)
 {
    free(Graph);
-   //free(Graph1);
    printf("memory for graphs freed\n");
 }
 void FindProblemTreePath(void)
@@ -1593,139 +769,6 @@ void printRedGraphPath(UINT8 * path, UINT8 n)
       printf("%4d",path[i]);
    printf("\n");
 }
-void PrintD5Index(UINT8 *id)
-{
-   UINT8 i;
-   printf("d5 index = ");
-   for(i=0;i<5;i++)
-      printf("%4d",id[i]);
-   printf("\n");
-}
-void FindSameRedGraphStateCountForIndex(int id);
-#if 1
-void FindRedGraphPath(void)
-{
-	UINT8 redGraphPathLengthLoc;
-	UINT8 redGraphPathLoc[30];
-	printf("FindRedGraphPath_func\n");
-	int id=goalTreeMatchStateIndex,goalCount=0;
-	UINT8 redGroupGoal,redGroupProblem;
-	UINT8 d5IndexProblemTreeMatchState[5],d5IndexGoalTreeMatchState[5];
-	printf("FindRedGraphPath_func1\n");
-	GetD5Index(&problemTreeMatchState,d5IndexProblemTreeMatchState);
-	GetD5Index(&goalTreeMatchState,d5IndexGoalTreeMatchState);
-	//   FindSameRedGraphStateCount(goalTreeMatchStateIndex);
-	//FindSameRedGraphStateCount(0);
-	redGroupProblem = GetRedGraphGroupId(d5IndexProblemTreeMatchState);
-	printf("redGroupProblem=%d\n",redGroupProblem);
-#if 1
-	//while(id != BAD_INDEX )
-	//{
-	// goalCount++;
-	// printf("goalcount=%d\n",goalCount);
-	//  GetD5Index(&(Graph[id].state),d5IndexGoalTreeMatchState);
-	redGroupGoal = GetRedGraphGroupId(d5IndexGoalTreeMatchState);
-	printf("redGroupGoal=%d\n",redGroupGoal);
-
-	//id = Graph[id].nodeNext;
-	//printf("id=%d\n",id);
-	//}
-#endif
-	// PrintD5Index(d5IndexProblemTreeMatchState);
-	//   PrintD5Index(d5IndexGoalTreeMatchState);
-	//FreeGraphs();
-	//printf("goalCount=%d\n",goalCount);
-
-	if( !GetRedGraphPath(d5IndexProblemTreeMatchState,
-				d5IndexGoalTreeMatchState,
-				redGraphPathLoc,
-				&redGraphPathLengthLoc/*,
-				1*/) )
-		printf("path could not be found!!!\n");
-	printRedGraphPath(redGraphPathLoc,redGraphPathLengthLoc);
-	int i;
-	for(i=0;i<redGraphPathLengthLoc;i++)
-	{
-		printf("i=%d len=%d\n",i,redGraphPathLengthLoc);
-		printf("move=%d \n",2*redGraphPathLoc[i]);
-		PathRed[2*i] = 2*redGraphPathLoc[i];
-		PathRed[2*i+1] = 2*redGraphPathLoc[i];
-	}
-	plnRed = redGraphPathLengthLoc*2-2;
-
-}
-#endif
-void CalcPaths(void)
-{
-      FindProblemTreePath();
-      FindGoalTreePath();
-
-      FreeGraphs();
-
-      FindRedGraphPath();
-}
-void FindSameRedGraphStateCountForIndex(int id)
-{
-   int idTmp,count=0;
-   UINT8 index5[5];
-   rbCubeState state_full;
-   printf("ser.No   id   level\n");
-   while(id != BAD_INDEX )
-   {
-      count++;
-      printf("%5d %8d  %d\n",count,id,Graph[id].level);
-      PrintCompState(&(Graph[id].state));
-      GetD5Index(&(Graph[id].state),index5);
-      PrintArray(index5,5);
-      PrintPathToGoal(id,PathGoal,&plnGoal);
-      GetRBStateFullFromComp( &(Graph[id].state), &state_full);
-      PrintFull(&state_full);
-      id = Graph[id].nodeNext;
-      printf("~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~\n");
-   }
-   printf("count=%d\n",count);
-}
-void FindRedGraphCount(void)
-{
-	int i,count=0,redgrcnt=0;
-	for(i=0;i<curGraphNodePtr;i++)
-	{
-		printf("Graph[%3d].nodeNext=%3d pmove:%2d pidx:%3d, frgr:%d, rgrp:%2d, redgrcnt=%3d  ",
-				i,Graph[i].nodeNext,
-				Graph[i].parentMove,
-				Graph[i].parentIndex,
-				Graph[i].firstInRedGr,
-				Graph[i].RedGroup,
-				count);
-		if(Graph[i].firstInRedGr)
-		{
-			redgrcnt++;
-			Graph[i].RedGraph = redgrcnt;
-		}
-		PrintMove(Graph[i].parentMove);
-		PrintMove(Graph[Graph[i].parentIndex].parentMove);
-		//printf("\n");
-		if ( Graph[i].nodeNext == BAD_INDEX )
-			count++;
-		else
-			Graph[Graph[i].nodeNext].RedGraph = Graph[i].RedGraph;
-
-		printf("redgr:%d\n",Graph[i].RedGraph);
-	}
-	printf("Graph[%d].nodeNext=%d\n",i,Graph[i].nodeNext);
-	printf("%5d red graph count calculated=%d\n",curGraphNodePtr,count);
-}
-void FindSameRedGraphStateCount(void)
-{
-   int index,tmp=BAD_INDEX;
-
-   for(index=0;index<1;index++)
-   {
-      printf("index=%d    ",index);
-      FindSameRedGraphStateCountForIndex(index);
-      printf("\n\n\n");
-   }
-}
 void PrintNodes( FinalNode * Gr )
 {
 	int i;
@@ -1736,277 +779,103 @@ void PrintNodes( FinalNode * Gr )
 		getchar();
 	}
 }
-void ReadPath(int path[], int * len)
+BOOLEAN Find16(rbCubeState * state, int *indexMatch);
+/*
+Write a prune function:
+   take a node obtained after making n(>60) moves from Goal
+   in the 60 move sequence, check if the shortest distance between any two points
+   that are more than 16 apart is less than 16. If so, modify the sequence
+   repeat until no more reduction can be made
+   */
+void PrunePath()
 {
-   int i;
-   printf("enter path length\n");
-   scanf("%d",len);
-   printf("enter path\n");
-   for(i=0;i<(*len);i++)
-   {
-      scanf("%d",&path[i]);
-   }
+    int idmatch;
+    UINT8 NNN = 67,len;
+    rbCubeState states[100],diff;
+    UINT8 dist, path[100],i,j;
+    len = dist = NNN;
+    GetRandRbStatePath(states,dist,path);
+    while(1)
+    {
+        for(i=0;i<(len-16);i++)
+        {
+			RbCubeConfigDiff( &states[i], &states[i+16], &diff);
+            Find16(&diff,&idmatch);
+        }
+    }
 }
-void GetTestState( rbCompState * state )
+BOOLEAN Find16(rbCubeState * state, int *indexMatch)
 {
-   int path[35];
-   int i,length;
-
-   rbCubeState parent = GOAL_STATE;
-   rbCubeState child;
-   ReadPath(path,&length);
-   for(i=0;i<length;i++)
-   {
-      GetChild(&parent, &child, path[i]);
-      parent = child;
-   }
-
-   GetRBStateCompFromFull(&child,state);
-}
-BOOLEAN CompareCompState(rbCompState * s1, rbCompState * s2)
-{
-   return ( s1->edgePos == s2->edgePos &&
-	 s1->cornerPos == s2->cornerPos &&
-	 s1->dir == s2->dir );
-      
-}
-void FindInGraph(rbCompState * state)
-{
-   int i;
-   for(i=0;i<curGraphNodePtr;i++)
-      if( CompareCompState(state, &(Graph[i].state) ) )
-      {
-	 printf("state found at %d\n",i);
-	 return;
-      }
-   printf("state not found\n");
-}
-BOOLEAN CompareHashIndexState(void)
-{
-   return (curStateHashIndex.CD == 5856 &&
-	 curStateHashIndex.ED == 2656 &&
-	 curStateHashIndex.EPG1 == 208 &&
-	 curStateHashIndex.EPG2 == 55 &&
-	 curStateHashIndex.CPG1 == 58);
-}
-void FindInGraph1(void)
-{
-   int i;
-   for(i=0;i<curGraphNodePtr;i++)
-   {
-      CalculateSubTableIndices(&(Graph[i].state), &curStateHashIndex);
-      if( CompareHashIndexState( ) )
-      {
-	 printf("nodeNext[%d]= %d\n",i,Graph[i].nodeNext);
-      }
-   }
-
-}
-void CheckGraph(void)
-{
-   int i;
-   rbCompState state;
-   for(i=0;i<20;i++)
-   {
-      GetTestState(&state);
-      CalculateSubTableIndices(&(state), &curStateHashIndex);
-      PrintSubTableIndices(&curStateHashIndex);
-      FindInGraph(&state);
-   }
-}
-/*find diffs between nodes of 'Graph' and 'Graph1'; if the difference lies in 'Graph'
- *then we know the path between that pair of vertices hence we can find the path
- *from problem node to the Goal node*/
-
-void ExploreDiffs(void)
-{
-#if 1
-	PRINT_TEXT("Explore diffs \n");
-	printf("***********Explore Diffs***********\n");
-	int i,j;
-	rbCubeState stateGraphFull, stateGraph1Full, diff;
-	rbCompState diffComp;//compressed difference
-	goalFlag = FINDING_DIFFS;
-	//for(i=curGraphNodePtr;i>105047;i--)
-	for(i=105047;i<curGraphNodePtr;i++)
-	{
-		//PrintCompState(&(Graph[i].state));
-		GetRBStateFullFromComp( &(Graph[i].state), &stateGraphFull);
-		printf("i=%d\n",i);
-		//PrintFull(&stateGraphFull);
-		//for(j=curGraph1NodePtr;j>105047;j--)
-		for(j=105047;j<curGraph1NodePtr;j++)
-		{
-			//PrintCompState(&(Graph1[i].state));
-			GetRBStateFullFromComp( &(Graph1[j].state), &stateGraph1Full);
-			//PrintFull(&stateGraph1Full);
-			RbCubeConfigDiff(&stateGraphFull, &stateGraph1Full, &diff);
-			GetRBStateCompFromFull(&diff, &diffComp);
-            searchState = curNode.state;
-			if( Find(&diffComp) )
-			{
-				printf("###############diff found in Graph!!!#########\n");
-				printf("i=%d, j=%d\n", i,j);
-				PrintPathToGoal(i,PathGoal,&plnGoal);
-				PrintPathToProblemNode(j);
-				return;
-			}
-		}
-	}
-#endif
-}
-void MarkRedGraphs(void)
-{
-    int i,ni,cnt=0,cnt1=0,cnt2=0,cntrg=0;
-    for(i=0;i<curGraphNodePtr;i++)
-        if (Graph[i].firstInRedGr!=2)
-            printf("*** error %d\n",i);
+    int i;
+    //rbCubeState searchState;
     for(i=0;i<curGraphNodePtr;i++)
     {
-        if (Graph[i].firstInRedGr==2)
+        GetChildByConfig(state,&Graph[i].state,&searchState);
+        if( Find(&searchState))
         {
-            Graph[i].firstInRedGr = 1;
-            cnt2++;
-            ni = Graph[i].nodeNext;
-            cntrg=0;
-            while ( ni!=BAD_INDEX )
-            {
-                Graph[ni].firstInRedGr = 0;
-                cnt++;
-                cntrg++;
-                ni = Graph[ni].nodeNext;
-            }
-            //printf("i=%d, cntrg=%d\n",i,cntrg);
+            printf("searched in %d indices out of %d\n",i,curGraphNodePtr);
+            *indexMatch = i;
+            return TRUE;
         }
+    }
+    return FALSE;
+}
+/*
+Generate 17 Grid
+   1. Generate node at distance 17 from Goal.
+   2. confirm it doesn't have path of length 16 or less from Goal, if not go to step 1
+   3a. confirm it doesn't have path of length 8 or less from any node in the SAVED_LIST, if not go to step 1
+   OR
+   3b. confirm it doesn't have path of length 16 or less from any node in the SAVED_LIST, if not go to step 1
+   4. save the node and its path to Goal to the SAVED_LIST
+   5. go to step 1
+   */
+
+void Gernerate17Grid(void)
+{
+    UINT8 gridVal=17;
+    int NNN = 7,idmatch;
+    UINT8 Path[gridVal];
+    UINT8 GridPath[NNN][gridVal];
+    rbCubeState state,diff;
+    rbCubeState stateGrid17[NNN];
+    int gridLen=0,i;
+    while(1)
+    {
+        //GetRandRbState(&state,gridVal);
+        GetRandRbStatePath1(&state,gridVal,Path);
+        printf("state generated\n");
+        for(i=0;i<gridVal;i++)
+            PrintMove(Path[i]);
+        if(Find16(&state,&idmatch))
+        {
+            printf("state is dist less than 17. skipping\n");
+            return;
+            continue;
+        }
+        for(i=0;i<gridLen;i++)
+        {
+            printf("finding diff with grid[%d]\n",i);
+            RbCubeConfigDiff( &stateGrid17[i], &state, &diff);
+            if(Find16(&diff,&idmatch))
+                break;
+        }
+        if(i<gridLen)
+            continue;
         else
         {
-            //printf("i=%d firstInRedGr=%d\n",i,Graph[i].firstInRedGr);
-            cnt1++;
+            stateGrid17[gridLen++]= state;
+            for(i=0;i<gridVal;i++)
+            {
+                GridPath[gridLen][i]=Path[i];
+                PrintMove(Path[i]);
+            }
+            printf("\n");
+            printf("node added to grid17; gridlen=%d\n",gridLen);
+            if(gridLen>=NNN)
+                return;
         }
     }
-            printf("cnt=%d cnt1=%d firstinRedGr=%d\n",cnt,cnt1,cnt2);
-}
-void RandomSearchPool(/*rbCubeState * problemState*/)
-{
-#define RandPoolSize 8000
-    UINT8 dist = 4;
-	int i,curPoolSize=0,wcounter=0,j;
-	rbCubeState randNodePool[RandPoolSize];
-	rbCompState problemStateComp,sComp;
-	rbCubeState statePoolFull, problemStateFull, diff;
-	char poolFile[20];
-	snprintf(poolFile,20,"StatePool%d",dist);
-	FILE * fp = fopen(poolFile,"a+");
-	int result,pos;
-	while(1)
-	{
-		for(i=0;i<12;i++)
-		{
-			result = fscanf(fp,"%d",&pos);
-			if (result == EOF)
-				break;
-			randNodePool[curPoolSize].edgePos[i]=pos;
-		}
-		for(i=0;i<12;i++)
-		{
-			result = fscanf(fp,"%d",&pos);
-			if (result == EOF)
-				break;
-			randNodePool[curPoolSize].edgeDir[i]=pos;
-		}
-		for(i=0;i<8;i++)
-		{
-			result = fscanf(fp,"%d",&pos);
-			if (result == EOF)
-				break;
-			randNodePool[curPoolSize].cornerPos[i]=pos;
-		}
-		for(i=0;i<8;i++)
-		{
-			result = fscanf(fp,"%d",&pos);
-			if (result == EOF)
-				break;
-			randNodePool[curPoolSize].cornerDir[i]=pos;
-		}
-		if (result == EOF)
-			break;
-		curPoolSize++;
-	}
-    while(wcounter<RandPoolSize)
-	{
-		UINT8 diffFoundinGraph = 0;
-        GetRandRbState(&problemStateComp,dist);
-		//printf("check 1\n");
-        GetRBStateFullFromComp(&problemStateComp, &problemStateFull);
-		//printf("check 2\n");
-        /* Check if it is at distance 7 or more from existing nodes in the pool*/
-        for(i=0;i<curPoolSize;i++)
-		{
-			RbCubeConfigDiff(&randNodePool[i], &problemStateFull, &diff);
-            GetRBStateCompFromFull(&diff, &sComp);
-		    //printf("check 3\n");
-            curNode.state = sComp;
-            searchState = sComp;
-            diffFoundinGraph = Find(&sComp);
-			if (diffFoundinGraph)
-			{
-			    printf("Diff found in graph i=%d Node won't be added to pool\n",i);
-			    break;
-			}
-		}
-		if (!diffFoundinGraph)
-		{
-		    randNodePool[curPoolSize++] = problemStateFull;
-			for(j=0;j<12;j++)
-			    fprintf(fp," %d",problemStateFull.edgePos[j]);
-			fprintf(fp,"\n");
-			for(j=0;j<12;j++)
-			    fprintf(fp," %d",problemStateFull.edgeDir[j]);
-			fprintf(fp,"\n");
-			for(j=0;j<8;j++)
-			    fprintf(fp," %d",problemStateFull.cornerPos[j]);
-			fprintf(fp,"\n");
-			for(j=0;j<8;j++)
-			    fprintf(fp," %d",problemStateFull.cornerDir[j]);
-			fprintf(fp,"\n");
-			printf("node added to pool. curPoolSize=%d\n",curPoolSize);
-		}
-		//printf("check 4\n");
-		wcounter++;
-		printf("wcounter=%d, curPoolSize=%d\n",wcounter,curPoolSize);
-
-	}
-	fclose(fp);
-}
-void RandomSearch(rbCubeState * problemState)
-{
-    int found=0,iter=0,i;
-    UINT8 len=10;
-    rbCompState randPath[100];
-    printf("problemstate is\n");
-    PrintFull(problemState);
-    
-    while(!found)
-    {
-        GetRandRbPath(problemState,len,randPath);
-        for(i=0; i<len && !found; i++)
-		{
-            //printf("i=%d comp state is:\n",i);
-            //PrintCompState( &(randPath[i]) );
-            curNode.state = randPath[i];
-            searchState = randPath[i];
-			found = Find(&(randPath[i]));
-		}
-        iter++;
-        if(iter%9000==0)
-            printf("iter=%d found=%d\n",iter,found);
-        //break;
-    }
-    if(found)
-        printf("***found***\n");
-    else
-        printf("not found\n");
-
 }
 int main( void )
 {
@@ -2015,13 +884,14 @@ int main( void )
 	int distInt;
 	int dist11;
 	time_t now;
+	time_t now1;
 	time(&now);
 	struct tm * curTime;
 	struct tm * curTime1;
-	rbCompState problemStateComp,sComp;
+	rbCubeState problemStateComp,sComp;
 	rbCubeState problemState,sFull,DestFull,parent;
 	rbIndices indices;
-	printf("Enter the number of levels to explore(min 2 Maximum 7)\n");
+	printf("Enter the number of levels to explore(min 2 Maximum 8)\n");
 	nLevels = 7;
 	scanf("%d",&nLevels);
 	if(nLevels > 0 && nLevels < 9 )
@@ -2029,242 +899,275 @@ int main( void )
 	else
 		PARENT_COUNT = ParentCount[6];
 
+    printf("parent_count=%d\n",PARENT_COUNT);
+
 	AllocateGraphs();
 	//printf("graph size = %d\n",sizeof(Graph));
-	InitCDTable();
 	srand(time(0));
 
 	//PopulateRedGroups("./child_gen/redGroup.txt");
 	//printf("red graphs generated\n");
+
+
+	//GenerateAllRedGraphs();
+	//curNode.state = GoalState;
+	//Insert();
+    printf("Enter choice\n");
+	printf("0 explore reduced graph neighbours\n");
+	printf("1 explore full graph\n");
+	printf("2 exit\n");
+    choice = 1;
+    //scanf("%d",&choice);
+    switch(choice)
+    {
+        case 0:
+            GenerateCubes();
+            int i0,i1,i2,i3,i4;
+            unsigned int icube;
+            unsigned short int vertex;
+            /*for(i0=0;i0<24;i0++)
+              for(i1=0;i1<24;i1++)
+              for(i2=0;i2<24;i2++)
+              for(i3=0;i3<24;i3++)
+              for(i4=0;i4<24;i4++)*/
+            for(icube=0;icube<20736;icube++)
+            {
+                for(vertex=0;vertex<32;vertex++)
+                {
+                    UINT8 path[40],len;
+                    int i,redGr;
+                    //rIndex parent_index;
+                    rIndex child_index;
+                    unsigned char red_pos[NGROUPS][GROUPSIZE];
+                    unsigned char red_pos_child[NGROUPS][GROUPSIZE];
+                    unsigned char red_pos_parent[NGROUPS][GROUPSIZE];
+                    rbCubeState tmp_state, tmp_child;
+                    rbCubeState child_state_comp;
+                    /*parent_index[0] = i0;
+                      parent_index[1] = i1;
+                      parent_index[2] = i2;
+                      parent_index[3] = i3;
+                      parent_index[4] = i4;*/
+                    printf("cube:%d, vertex:%d========================\n",icube,vertex);
+                    GetCubeVertexState(icube,vertex,&parent_state);
+
+                    //redGr = GetRedGroup(parent_index);
+                    //if (redGr != 0)
+                    //  continue;
+
+                    //red_pos_matrix_from_index( parent_index, red_pos );
+                    //GetRbStateFromRedPos( red_pos, &parent_state);
+
+                    //GetRedGraphPath1(parent_index,path,&len);
+                    //PrintFull(&state);
+                    GetRedPosFromRbState(&parent_state, red_pos_parent);
+                    calc_child_index_red_pos(red_pos_parent, parent_index );
+                    CubesRedGraphNeighb[icube][vertex].level = GetRedGraphLevel(parent_index);
+                    for(i=0;i<6;i++)
+                    {
+                        GetChild(&parent_state,&child_state,2*i);
+                        GetRedPosFromRbState(&child_state, red_pos_child);
+                        calc_child_index_red_pos(red_pos_child, child_index );
+                        redGrChild = GetRedGroup(child_index);
+                        //redGrChild = 0;
+                        //PrintFull(&child_state);
+                        curNode.state = child_state;
+                        printf("cube:%d, vertex:%2d==",icube,vertex);
+                        //printf("%2d,%2d,%2d,%2d,%2d",i0,i1,i2,i3,i4);
+                        printf("::%2d,%2d,%2d,%2d,%2d",child_index[0],child_index[1],
+                                child_index[2],child_index[3],child_index[4]);
+                        printf("::move=%d::",i);
+                        cubeMove.cube = icube;
+                        cubeMove.vertex = vertex;
+                        cubeMove.move = i;
+                        cubeMove.stateChild = child_state;
+                        cubeMove.stateParent = parent_state;
+                        Insert();
+                    }
+                    printf("FinalNodeCount=%8d  ",FinalNodeCount);
+                    printf("new red graphs=%6d  ",FinalNodeCount-InsertGraphCount);
+                    printf("insertgraphcount=%8d\n",InsertGraphCount);
+                    printf("redGroups: %d\n",redGroupCount);
+                    //if((FinalNodeCount-InsertGraphCount) == 1297)
+                    //  return 0;
+                }
+            }
+            printf("redGroups: %d\n",redGroupCount);
+            for(icube=0;icube<20736;icube++)
+            {
+                for(vertex=0;vertex<32;vertex++)
+                {
+                    printf("%6d%4d(%3d)",icube,vertex,CubesRedGraphNeighb[icube][vertex].level);
+                    for(i=0;i<6;i++)
+                    {
+                        printf("%5d(%3d)", CubesRedGraphNeighb[icube][vertex].child[i].redGraphId,
+                                CubesRedGraphNeighb[icube][vertex].child[i].level);
+                    }
+                    printf("\n");
+                }
+            }
+
+            return 0;
+        case 1:
+            break;
+        case 2:
+        default:
+            return 0;
+    }
+
+    printf("initializing epostable=%d\n",EPosTableSize);
+    for(i=0;i<EPosTableSize;i++)
+        EPosTable[i]=BAD_INDEX;/*12!/6*/
 	time(&now);
 	curTime = localtime(&now);
-	calc_graph(Graph,GOAL_NODE,&GoalState);
-	printf("before H:M:S %2d:%2d:%2d\n",curTime->tm_hour,curTime->tm_min,curTime->tm_sec);
-	time(&now);
-	curTime1 = localtime(&now);
-	printf(" after H:M:S %2d:%2d:%2d\n",curTime1->tm_hour,curTime1->tm_min,curTime1->tm_sec);
+	printf("before H:M:S %02d:%02d:%02d\n",curTime->tm_hour,curTime->tm_min,curTime->tm_sec);
+    calc_graph(Graph,GOAL_NODE,&GoalState);
+
+    printf("*** addgr=%d***\n",addgr);
+	time(&now1);
+	curTime1 = localtime(&now1);
+	printf("before H:M:S %02d:%02d:%02d\n",curTime->tm_hour,curTime->tm_min,curTime->tm_sec);
+	printf(" after H:M:S %02d:%02d:%02d\n",curTime1->tm_hour,curTime1->tm_min,curTime1->tm_sec);
 	printf(" epg1cnt=%d\n",epg1cnt);
 	printf(" epg2cnt=%d\n",epg2cnt);
 	printf(" cpg1cnt=%d\n",cpg1cnt);
 	printf(" edircnt=%d\n",edircnt);
-	ConertGraphToArray();
-	MarkRedGraphs();
-	printf("redGraphCount=%d\n",redGraphCount);
-	//GenerateAllRedGraphs();
-	//   printf("press any key to continue\n");
-	//getchar();
-	//CheckGraph();
-	//   FindSameRedGraphStateCount();
-	//   PrintNodes();
-	//FindRedGraphCount();
-	printf("redGraphCount=%d\n",redGraphCount);
+
 	int wLoop=0;
+    Gernerate17Grid();
+    return 0;
 	while(wLoop<400)
-	{
-		wLoop++;
-		int iSearchCount=0; 
-		plnProb=plnGoal=plnRed=0;
-		pathidx=0;
-		pathidx1=0;
-		printf("================================================================================\n");
-		printf("Enter choice\n");
-		printf("0 user config\n");
-		printf("1 Generated Config(choose this if not sure)\n");
-		printf("2 exit\n");
-		choice = 1;
-		scanf("%d",&choice);
-		switch(choice)
-		{
-			case 0:
-				GetUserInputConfig(&problemState);
-				GetRBStateCompFromFull(&problemState, &problemStateComp);
-				break;
-			case 1:
-				//printf("Enter config type choice\n");
-				//printf("0 normal config\n");
-				//printf("1 red graph Config\n");
-				choice1 = 0;
-				//scanf("%d",&choice1);
-				switch(choice1)
-				{
-					case 0:
-						printf("Enter random state distance\n");
-						dist = 2*nLevels+10;
-						scanf("%d",&distInt);
-						dist = distInt;
-						GetRandRbState(&problemStateComp,dist);
-						GetRBStateFullFromComp(&problemStateComp, &problemState);
-						printf("Got random state at dist:%d\n",dist);
-						break;
-					case 1:
-						printf("Enter random state distance\n");
-						scanf("%d",&dist11);
-						dist=dist11;
-						printf("enter red distance\n");
-						scanf("%d",&d1);
-						//GetRandRbState(&problemStateComp,dist);
-						//GetRBStateFullFromComp(&problemStateComp, &problemState);
-						//CalculateSubTableIndices( &problemStateComp,&indices);
-						//PrintFull(&problemState);
-						//PrintSubTableIndices(&indices);
-						//parent = problemState;
-						//GetChild(&parent,&problemState,5);
-						//parent = problemState;
-						//GetChild(&parent,&problemState,5);
-						//GetRBStateCompFromFull(&problemState, &problemStateComp);
-						//CalculateSubTableIndices( &problemStateComp,&indices);
-						//PrintSubTableIndices(&indices);
-						//PrintFull(&problemState);
-						//GetRandRbState(&problemStateComp,dist);
-						GetRandRbRedState(&problemStateComp,dist,d1);
-						GetRBStateFullFromComp(&problemStateComp, &problemState);
-						break;
-					default:
-						break;
-				}
-				break;
-			case 2:
-				return 0;
-			default:
-				printf("bad choice %d\n",choice);
-				break;
-		}
-		printRbCompState(&problemStateComp);
-		//printf("Enter explore method choice\n");
-		//printf("0 config function \n");
-		//printf("1 calc_graph\n");
-		//printf("2 random search\n");
-		//printf("3 random search pool\n");
-		//printf("4 exit\n");
-		//scanf("%d",&choice);
-		choice = 0;
-		switch(choice)
-		{
-			case 0:
-				printf("searching node in the Graph\n");
-				iSearchCount=0; 
-				/*TODO no need to search for each i.
-				  Enough to search with i that is root for that red graph
-				  No. we need to search each node*/
-				time(&now);
-				curTime = localtime(&now);
-				printf("H:M:S %d:%d:%d\n",curTime->tm_hour,curTime->tm_min,curTime->tm_sec);
-				for(i=0;i<curGraphNodePtr;i++)
-				{
-					gFindLevel=0;
-					iSearchCount++; 
-					//printf("i=%d\n",i);
-					GetRBStateFullFromComp(&Graph[i].state, &sFull );
-					//PrintFull(&sFull,"state i");
-					//printf("i1=%d\n",i);
-					GetChildByConfig(&problemState,&sFull,&DestFull);
-					//PrintFullN(&problemState,"prob");
-					//PrintFullN(&DestFull,"dest");
-					//printf("i2=%d\n",i);
-					GetRBStateCompFromFull(&DestFull,&sComp);
-					//printf("i3=%d\n",i);
-					//printRbCompState(&sComp);
-					curNode.state = sComp;
-					searchState = sComp;
-					//printf("i=%d",i);
-					found = Find(&sComp);
-					//                    if ( i >0 && i%100)
-					//                     printf("searched %d\n",i);
-					if ( found == 1 || found ==2)
-					{
-						int PathFinal[60],lnFin=0;
-						rbCubeState s11,s12,child;
-						s11 = problemState;
-						printf("\n*** Exact Match Found *** i=%d found=%d\n\n",i,found);
+    {
+        wLoop++;
+        unsigned char problem_red_pos[NGROUPS][GROUPSIZE];
+        plnProb=plnGoal=plnRed=0;
+        pathidx=0;
+        pathidx1=0;
+        printf("================================================================================\n");
+        printf("Enter choice\n");
+        printf("0 user config\n");
+        printf("1 Generated Config(choose this if not sure)\n");
+        printf("2 exit\n");
+        choice = 1;
+        scanf("%d",&choice);
+        switch(choice)
+        {
+            case 0:
+                GetUserInputConfig(&problemState);
+                break;
+            case 1:
+                printf("Enter config type choice\n");
+                printf("0 normal config\n");
+                printf("1 red graph Config\n");
+                choice1 = 0;
+                scanf("%d",&choice1);
+                switch(choice1)
+                {
+                    case 0:
+                        printf("Enter random state distance\n");
+                        dist = 2*nLevels+10;
+                        scanf("%d",&distInt);
+                        dist = distInt;
+                        GetRandRbState(&problemState,dist);
+                        printf("Got random state at dist:%d\n",dist);
+                        break;
+                    case 1:
+                        printf("Enter random state distance\n");
+                        scanf("%d",&dist11);
+                        dist=dist11;
+                        printf("enter red distance\n");
+                        scanf("%d",&d1);
+                        GetRedGraphNodeAtLevel( parent_index,d1);
+                        //printf("%d,%d,%d,%d,%d\n");
+                        red_pos_matrix_from_index( parent_index, problem_red_pos );
+                        GetRbStateFromRedPos(problem_red_pos, &problemState);
+                        break;
+                    default:
+                        break;
+                }
+                break;
+            case 2:
+                return 0;
+            default:
+                printf("bad choice %d\n",choice);
+                break;
+        }
+        printf("searching node in the Graph\n");
+        /*TODO no need to search for each i.
+          Enough to search with i that is root for that red graph
+          No. we need to search each node*/
+        time(&now);
+        curTime = localtime(&now);
+        printf("H:M:S %02d:%02d:%02d\n",curTime->tm_hour,curTime->tm_min,curTime->tm_sec);
+        if(Find16(&problemState,&i))
+        //for(i=0;i<curGraphNodePtr;i++)
+        {
+            //GetChildByConfig(&problemState,&Graph[i].state,&searchState);
+            //curNode.state = searchState;
+            //found = Find(&searchState);
+            //if ( found == 1 || found ==2)
+            int PathFinal[60],lnFin=0;
+            rbCubeState s11,s12,child;
+            s11 = problemState;
+            printf("\n*** Exact Match Found *** i=%d found=%d\n\n",i,found);
+            //continue;
 
-						printf("destfull\n");
-						PrintFull(&DestFull);
-						PrintPathToGoal(i,PathProb,&plnProb);
+            printf("destfull\n");
+            PrintFull(&DestFull);
+            PrintPathToGoal(i,PathProb,&plnProb);
 
-						printf("*****full path\n");
-						int iii,mi;
-						for(iii=plnProb-1;iii>=0;iii--)
-						{
-							PrintMove(PathProb[iii]^0x01);
-							PathFinal[lnFin++]= PathProb[iii]^0x01;
-						}
-						printf(" --- ");
-						//for(iii=plnRed-1;iii>=0;iii--)
-						for(iii=0;iii<plnRed;iii++)
-						{
-							PrintMove(PathRed[iii]);
-							PathFinal[lnFin++]= PathRed[iii];
-						}
-						printf(" --- ");
-						for(iii=0;iii<plnGoal;iii++)
-						{
-							PrintMove(PathGoal[iii]);
-							PathFinal[lnFin++]= PathGoal[iii];
-						}
-						printf("\nPath Length:%d\n",lnFin);
-						//PrintPathToProblemNode(i);
+            printf("*****full path\n");
+            int iii,mi;
+            for(iii=plnProb-1;iii>=0;iii--)
+            {
+                PrintMove(PathProb[iii]^0x01);
+                PathFinal[lnFin++]= PathProb[iii]^0x01;
+            }
+            printf(" --- ");
+            //for(iii=plnRed-1;iii>=0;iii--)
+            for(iii=0;iii<plnRed;iii++)
+            {
+                PrintMove(PathRed[iii]);
+                PathFinal[lnFin++]= PathRed[iii];
+            }
+            printf(" --- ");
+            for(iii=0;iii<plnGoal;iii++)
+            {
+                PrintMove(PathGoal[iii]);
+                PathFinal[lnFin++]= PathGoal[iii];
+            }
+            printf("\nPath Length:%d\n",lnFin);
+            //PrintPathToProblemNode(i);
 
-						parent = problemState;
-						for(mi=0;mi<lnFin;mi++)
-						{
-							GetChild(&parent,&child,PathFinal[mi]);
-							parent = child;
-						}
-						PrintFull(&child);
-						rbCubeState goalSt = GOAL_STATE;
-						if (CompareFullStates(&child,&goalSt))
-							printf("\n***********success. Path is correct\n\n");
-						else
-						{
-							printf("\n***********Fail. Path is not correct\n\n");
-							//return 0;
-						}
+            parent = problemState;
+            for(mi=0;mi<lnFin;mi++)
+            {
+                GetChild(&parent,&child,PathFinal[mi]);
+                parent = child;
+            }
+            PrintFull(&child);
+            rbCubeState goalSt = GOAL_STATE;
+            if (CompareFullStates(&child,&goalSt))
+                printf("\n***********success. Path is correct\n\n");
+            else
+            {
+                printf("\n***********Fail. Path is not correct\n\n");
+                //return 0;
+            }
 
 
-						break;
-					}
-					else if( found == 2 )
-						printf("found2 at i=%d\n",i);
-					//else
-					//  printf("*** exact match not found with i=%d ***\n",i);
-					//printf("i4=%d\n",i);
-				}
-				printf("H:M:S %d:%d:%d\n",curTime->tm_hour,curTime->tm_min,curTime->tm_sec);
-				time(&now);
-				curTime1 = localtime(&now);
-				printf("H:M:S %d:%d:%d\n",curTime1->tm_hour,curTime1->tm_min,curTime1->tm_sec);
-				printf("searched in %d indices out of %d\n",iSearchCount,i);
-				if (i==curGraphNodePtr)
-				{
-					printf("\n*** match node not found ***\n\n");
-					ExploreTripod(problemState);
-					//return 0;
-				}
-				break;
-			case 1:
-				printf("Exploring graph of problem state\n");
-
-
-				//calc_graph(Graph1,PROBLEM_NODE,&problemStateComp);
-				PrintNodes(Graph1);
-
-				if( matchCount > 0 )
-					printf("matches found!!! match count = %d\n", matchCount);
-				else{      
-					printf("Match not found\n");
-					ExploreDiffs();
-				}
-				break;
-			case 2:
-				RandomSearch(&problemState);
-				break;
-			case 3:
-				RandomSearchPool();
-				break;
-			case 4:
-				return 0;
-		}
-	}
+        }
+        else
+        {
+            printf("\n*** match node not found ***\n\n");
+            //ExploreTripod(problemState);
+            //return 0;
+        }
+        printf("H:M:S %02d:%02d:%02d\n",curTime->tm_hour,curTime->tm_min,curTime->tm_sec);
+        time(&now);
+        curTime1 = localtime(&now);
+        printf("H:M:S %02d:%02d:%02d\n",curTime1->tm_hour,curTime1->tm_min,curTime1->tm_sec);
+    }
 	FreeGraphs();
 	return 0;
 }
@@ -2278,4 +1181,67 @@ list all tripods(4!*3^4*3!*2^3) that have path of length less than o equal to 14
 If problem node is at a distance greater than 14 from Goal
    from problem node, find if there exists a path of length<=14 to any tripod node
 
+--- for a node at distance 14 from Goal, how many paths of length 14 are there to Goal?
+--- how many neighbours does a reduced graph have --- 1296?
+--- connections between two neighbouring reduced graphs: (663552*6)/1296 = 512*6 = 3072*2(if we treat green-in and green-out different) = 6144
+--- number of vertices in a reduced graph: 663552
+--- there are 12 out-edges(going to another reduced graph) from each vertex  - but these 12 edges land on 6 reduced graphs
+
+Full = (8! * 3^8 * 12! * 2^12 )/12
+Red = 24^4 * 2  = 8^4 * 3^4 /2 = 2^12 * 3^4 /2
+
+(Full / Red) = 8! * 3^4 * 12! / 6 = 4 * 7! * 3^3 * 12! = 260730150912000 = 2.6 * 10 ^ 14
+
+For any two nodes in a reduced Graph, is it possible to have a path(through the full Graph)
+between them that is shorter than the shortest path through the reduced graph itself
+
+What is the diameter of the "Graph of reduced graphs" = the Graph in which each reduced graph
+is treated as a vertex. The degree of this Graph is 1296. Means each reduced Graph has 1296 neighbours
+diameter = shortest distance between farthest nodes
+
+what is the relation among the 6144 nodes of a reduced graph which go to same reduced graph
+
+Graph has degree 1296
+vertex transitive
+2.6 * 10 ^ 14 vertices = 12! * 7! * 3^3 * 4
+
+
+what are those 6144 connections between two reduced graphs:
+
+
+A, B, C, D, E
+
+if D = A+C and E = B+C
+then
+A - B = D - E
+
+A - B : sequence of moves required to go from A to B
+
+Let's say SeqC is the sequence of moves required to go from Goal to C, then
+A + C is obtained by applying the moves in SeqC to A
+
+Reduced Graph has 1296 neighbours.
+What are those?
+  432 - green, blue
+  432 - pink, red
+  432 - yellow, black
+Why only 1296?
+How many neighbour reduced graphs from a "cube"?  48
+
+*******************************************************************************
+Write a prune function:
+   take a node obtained after making n(>60) moves from Goal
+   in the 60 move sequence, check if the shortest distance between any two points
+   that are more than 16 apart is less than 16. If so, modify the sequence
+   repeat until no more reduction can be made
+*******************************************************************************
+Generate 17 Grid
+   1. Generate node at distance 17 from Goal.
+   2. confirm it doesn't have path of length 16 or less from Goal, if not go to step 1
+   3a. confirm it doesn't have path of length 8 or less from any node in the SAVED_LIST, if not go to step 1
+   OR
+   3b. confirm it doesn't have path of length 16 or less from any node in the SAVED_LIST, if not go to step 1
+   4. save the node and its path to Goal to the SAVED_LIST
+   5. go to step 1
+******************************************************************************
 */

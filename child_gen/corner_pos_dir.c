@@ -47,130 +47,82 @@ void Find_child_corner_pos( rbCubeState * parent, rbCubeState * child, UINT8 mov
 
 	for( i=0;i<8;i++ ){
 		child->cornerPos[i] = parent->cornerPos[i];
-		child->cornerDir[i] = parent->cornerDir[i];
 	}
 
+#define corner_move(cpos) ((0x07 & parent->cornerPos[cpos]) | ((corner_cube_dir_mapping[move>>2][parent->cornerPos[cpos]>>3])<<3))
 	switch( move )
 	{
 		case GREEN_IN: /*green in*/
-			child->cornerPos[green_white_red] = parent->cornerPos[green_white_pink];
-			child->cornerDir[green_white_red] = corner_cube_dir_mapping[move/4][parent->cornerDir[green_white_pink]];
-			child->cornerPos[green_white_pink] = parent->cornerPos[green_pink_yellow];
-			child->cornerDir[green_white_pink] = corner_cube_dir_mapping[move/4][parent->cornerDir[green_pink_yellow]];
-			child->cornerPos[green_pink_yellow] = parent->cornerPos[green_yellow_red];
-			child->cornerDir[green_pink_yellow] = corner_cube_dir_mapping[move/4][parent->cornerDir[green_yellow_red]];
-			child->cornerPos[green_yellow_red] = parent->cornerPos[green_white_red];
-			child->cornerDir[green_yellow_red] = corner_cube_dir_mapping[move/4][parent->cornerDir[green_white_red]];
+			child->cornerPos[green_white_red] =  corner_move(green_white_pink);
+			child->cornerPos[green_white_pink] = corner_move(green_pink_yellow);
+			child->cornerPos[green_pink_yellow] = corner_move(green_yellow_red);
+			child->cornerPos[green_yellow_red] = corner_move(green_white_red);
 			break;
 		case GREEN_OUT: /*green out*/
-			child->cornerPos[green_white_red] = parent->cornerPos[green_yellow_red];
-			child->cornerDir[green_white_red] = corner_cube_dir_mapping[move/4][parent->cornerDir[green_yellow_red]];
-			child->cornerPos[green_yellow_red] = parent->cornerPos[green_pink_yellow];
-			child->cornerDir[green_yellow_red] = corner_cube_dir_mapping[move/4][parent->cornerDir[green_pink_yellow]];
-			child->cornerPos[green_pink_yellow] = parent->cornerPos[green_white_pink];
-			child->cornerDir[green_pink_yellow] = corner_cube_dir_mapping[move/4][parent->cornerDir[green_white_pink]];
-			child->cornerPos[green_white_pink] = parent->cornerPos[green_white_red];
-			child->cornerDir[green_white_pink] = corner_cube_dir_mapping[move/4][parent->cornerDir[green_white_red]];
+			child->cornerPos[green_white_red] = corner_move(green_yellow_red);
+			child->cornerPos[green_yellow_red] = corner_move(green_pink_yellow);
+			child->cornerPos[green_pink_yellow] = corner_move(green_white_pink);
+			child->cornerPos[green_white_pink] = corner_move(green_white_red);
 			break;
 		case BLUE_IN: /*blue in*/
-			child->cornerPos[blue_red_yellow] = parent->cornerPos[blue_yellow_pink];
-			child->cornerDir[blue_red_yellow] = corner_cube_dir_mapping[move/4][parent->cornerDir[blue_yellow_pink]];
-			child->cornerPos[blue_yellow_pink] = parent->cornerPos[blue_pink_white];
-			child->cornerDir[blue_yellow_pink] = corner_cube_dir_mapping[move/4][parent->cornerDir[blue_pink_white]];
-			child->cornerPos[blue_pink_white] = parent->cornerPos[blue_white_red];
-			child->cornerDir[blue_pink_white] = corner_cube_dir_mapping[move/4][parent->cornerDir[blue_white_red]];
-			child->cornerPos[blue_white_red] = parent->cornerPos[blue_red_yellow];
-			child->cornerDir[blue_white_red] = corner_cube_dir_mapping[move/4][parent->cornerDir[blue_red_yellow]];
+			child->cornerPos[blue_red_yellow] = corner_move(blue_yellow_pink);
+			child->cornerPos[blue_yellow_pink] = corner_move(blue_pink_white);
+			child->cornerPos[blue_pink_white] = corner_move(blue_white_red);
+			child->cornerPos[blue_white_red] = corner_move(blue_red_yellow);
 			break;
 		case BLUE_OUT: /*blue out*/
-			child->cornerPos[blue_red_yellow] = parent->cornerPos[blue_white_red];
-			child->cornerDir[blue_red_yellow] = corner_cube_dir_mapping[move/4][parent->cornerDir[blue_white_red]];
-			child->cornerPos[blue_white_red] = parent->cornerPos[blue_pink_white];
-			child->cornerDir[blue_white_red] = corner_cube_dir_mapping[move/4][parent->cornerDir[blue_pink_white]];
-			child->cornerPos[blue_pink_white] = parent->cornerPos[blue_yellow_pink];
-			child->cornerDir[blue_pink_white] = corner_cube_dir_mapping[move/4][parent->cornerDir[blue_yellow_pink]];
-			child->cornerPos[blue_yellow_pink] = parent->cornerPos[blue_red_yellow];
-			child->cornerDir[blue_yellow_pink] = corner_cube_dir_mapping[move/4][parent->cornerDir[blue_red_yellow]];
+			child->cornerPos[blue_red_yellow] = corner_move(blue_white_red);
+			child->cornerPos[blue_white_red] = corner_move(blue_pink_white);
+			child->cornerPos[blue_pink_white] = corner_move(blue_yellow_pink);
+			child->cornerPos[blue_yellow_pink] = corner_move(blue_red_yellow);
 			break;
 		case RED_IN: /*red in*/
-			child->cornerPos[red_green_white] = parent->cornerPos[red_green_yellow];
-			child->cornerDir[red_green_white] = corner_cube_dir_mapping[move/4][parent->cornerDir[red_green_yellow]];
-			child->cornerPos[red_green_yellow] = parent->cornerPos[red_yellow_blue];
-			child->cornerDir[red_green_yellow] = corner_cube_dir_mapping[move/4][parent->cornerDir[red_yellow_blue]];
-			child->cornerPos[red_yellow_blue] = parent->cornerPos[red_blue_white];
-			child->cornerDir[red_yellow_blue] = corner_cube_dir_mapping[move/4][parent->cornerDir[red_blue_white]];
-			child->cornerPos[red_blue_white] = parent->cornerPos[red_green_white];
-			child->cornerDir[red_blue_white] = corner_cube_dir_mapping[move/4][parent->cornerDir[red_green_white]];
+			child->cornerPos[red_green_white] = corner_move(red_green_yellow);
+			child->cornerPos[red_green_yellow] = corner_move(red_yellow_blue);
+			child->cornerPos[red_yellow_blue] = corner_move(red_blue_white);
+			child->cornerPos[red_blue_white] = corner_move(red_green_white);
 			break;
 		case RED_OUT: /*red out*/
-			child->cornerPos[red_green_white] = parent->cornerPos[red_blue_white];
-			child->cornerDir[red_green_white] = corner_cube_dir_mapping[move/4][parent->cornerDir[red_blue_white]];
-			child->cornerPos[red_blue_white] = parent->cornerPos[red_yellow_blue];
-			child->cornerDir[red_blue_white] = corner_cube_dir_mapping[move/4][parent->cornerDir[red_yellow_blue]];
-			child->cornerPos[red_yellow_blue] = parent->cornerPos[red_green_yellow];
-			child->cornerDir[red_yellow_blue] = corner_cube_dir_mapping[move/4][parent->cornerDir[red_green_yellow]];
-			child->cornerPos[red_green_yellow] = parent->cornerPos[red_green_white];
-			child->cornerDir[red_green_yellow] = corner_cube_dir_mapping[move/4][parent->cornerDir[red_green_white]];
+			child->cornerPos[red_green_white] = corner_move(red_blue_white);
+			child->cornerPos[red_blue_white] = corner_move(red_yellow_blue);
+			child->cornerPos[red_yellow_blue] = corner_move(red_green_yellow);
+			child->cornerPos[red_green_yellow] = corner_move(red_green_white);
 			break;
 		case PINK_IN: /*pink in*/
-			child->cornerPos[pink_green_white] = parent->cornerPos[pink_white_blue];
-			child->cornerDir[pink_green_white] = corner_cube_dir_mapping[move/4][parent->cornerDir[pink_white_blue]];
-			child->cornerPos[pink_white_blue] = parent->cornerPos[pink_blue_yellow];
-			child->cornerDir[pink_white_blue] = corner_cube_dir_mapping[move/4][parent->cornerDir[pink_blue_yellow]];
-			child->cornerPos[pink_blue_yellow] = parent->cornerPos[pink_yellow_green];
-			child->cornerDir[pink_blue_yellow] = corner_cube_dir_mapping[move/4][parent->cornerDir[pink_yellow_green]];
-			child->cornerPos[pink_yellow_green] = parent->cornerPos[pink_green_white];
-			child->cornerDir[pink_yellow_green] =corner_cube_dir_mapping[move/4][parent->cornerDir[pink_green_white]];
+			child->cornerPos[pink_green_white] = corner_move(pink_white_blue);
+			child->cornerPos[pink_white_blue] = corner_move(pink_blue_yellow);
+			child->cornerPos[pink_blue_yellow] = corner_move(pink_yellow_green);
+			child->cornerPos[pink_yellow_green] = corner_move(pink_green_white);
 			break;
 		case PINK_OUT: /*pink out*/
-			child->cornerPos[pink_green_white] = parent->cornerPos[pink_yellow_green];
-			child->cornerDir[pink_green_white] = corner_cube_dir_mapping[move/4][parent->cornerDir[pink_yellow_green]];
-			child->cornerPos[pink_yellow_green] = parent->cornerPos[pink_blue_yellow];
-			child->cornerDir[pink_yellow_green] = corner_cube_dir_mapping[move/4][parent->cornerDir[pink_blue_yellow]];
-			child->cornerPos[pink_blue_yellow] = parent->cornerPos[pink_white_blue];
-			child->cornerDir[pink_blue_yellow] = corner_cube_dir_mapping[move/4][parent->cornerDir[pink_white_blue]];
-			child->cornerPos[pink_white_blue] = parent->cornerPos[pink_green_white];
-			child->cornerDir[pink_white_blue] = corner_cube_dir_mapping[move/4][parent->cornerDir[pink_green_white]];
+			child->cornerPos[pink_green_white] = corner_move(pink_yellow_green);
+			child->cornerPos[pink_yellow_green] = corner_move(pink_blue_yellow);
+			child->cornerPos[pink_blue_yellow] = corner_move(pink_white_blue);
+			child->cornerPos[pink_white_blue] = corner_move(pink_green_white);
 			break;
 		case WHITE_IN: /*white in*/
-			child->cornerPos[white_blue_red] = parent->cornerPos[white_blue_pink];
-			child->cornerDir[white_blue_red] = corner_cube_dir_mapping[move/4][parent->cornerDir[white_blue_pink]];
-			child->cornerPos[white_blue_pink] = parent->cornerPos[white_pink_green];
-			child->cornerDir[white_blue_pink] = corner_cube_dir_mapping[move/4][parent->cornerDir[white_pink_green]];
-			child->cornerPos[white_pink_green] = parent->cornerPos[white_green_red];
-			child->cornerDir[white_pink_green] = corner_cube_dir_mapping[move/4][parent->cornerDir[white_green_red]];
-			child->cornerPos[white_green_red] = parent->cornerPos[white_blue_red];
-			child->cornerDir[white_green_red] = corner_cube_dir_mapping[move/4][parent->cornerDir[white_blue_red]];
+			child->cornerPos[white_blue_red] = corner_move(white_blue_pink);
+			child->cornerPos[white_blue_pink] = corner_move(white_pink_green);
+			child->cornerPos[white_pink_green] = corner_move(white_green_red);
+			child->cornerPos[white_green_red] = corner_move(white_blue_red);
 			break;
 		case WHITE_OUT: /*white out*/
-			child->cornerPos[white_blue_red] = parent->cornerPos[white_green_red];
-			child->cornerDir[white_blue_red] = corner_cube_dir_mapping[move/4][parent->cornerDir[white_green_red]];
-			child->cornerPos[white_green_red] = parent->cornerPos[white_pink_green];
-			child->cornerDir[white_green_red] = corner_cube_dir_mapping[move/4][parent->cornerDir[white_pink_green]];
-			child->cornerPos[white_pink_green] = parent->cornerPos[white_blue_pink];
-			child->cornerDir[white_pink_green] = corner_cube_dir_mapping[move/4][parent->cornerDir[white_blue_pink]];
-			child->cornerPos[white_blue_pink] = parent->cornerPos[white_blue_red];
-			child->cornerDir[white_blue_pink] = corner_cube_dir_mapping[move/4][parent->cornerDir[white_blue_red]];
+			child->cornerPos[white_blue_red] = corner_move(white_green_red);
+			child->cornerPos[white_green_red] = corner_move(white_pink_green);
+			child->cornerPos[white_pink_green] = corner_move(white_blue_pink);
+			child->cornerPos[white_blue_pink] = corner_move(white_blue_red);
 			break;
 		case YELLOW_IN: /*yellow in*/
-			child->cornerPos[yellow_pink_green] = parent->cornerPos[yellow_pink_blue];
-			child->cornerDir[yellow_pink_green] = corner_cube_dir_mapping[move/4][parent->cornerDir[yellow_pink_blue]];
-			child->cornerPos[yellow_pink_blue] = parent->cornerPos[yellow_blue_red];
-			child->cornerDir[yellow_pink_blue] = corner_cube_dir_mapping[move/4][parent->cornerDir[yellow_blue_red]];
-			child->cornerPos[yellow_blue_red] = parent->cornerPos[yellow_green_red];
-			child->cornerDir[yellow_blue_red] = corner_cube_dir_mapping[move/4][parent->cornerDir[yellow_green_red]];
-			child->cornerPos[yellow_green_red] = parent->cornerPos[yellow_pink_green];
-			child->cornerDir[yellow_green_red] = corner_cube_dir_mapping[move/4][parent->cornerDir[yellow_pink_green]];
+			child->cornerPos[yellow_pink_green] = corner_move(yellow_pink_blue);
+			child->cornerPos[yellow_pink_blue] = corner_move(yellow_blue_red);
+			child->cornerPos[yellow_blue_red] = corner_move(yellow_green_red);
+			child->cornerPos[yellow_green_red] = corner_move(yellow_pink_green);
 			break;
 		case YELLOW_OUT: /*yellow out*/
-			child->cornerPos[yellow_pink_green] = parent->cornerPos[yellow_green_red];
-			child->cornerDir[yellow_pink_green] = corner_cube_dir_mapping[move/4][parent->cornerDir[yellow_green_red]];
-			child->cornerPos[yellow_green_red] = parent->cornerPos[yellow_blue_red];
-			child->cornerDir[yellow_green_red] = corner_cube_dir_mapping[move/4][parent->cornerDir[yellow_blue_red]];
-			child->cornerPos[yellow_blue_red] = parent->cornerPos[yellow_pink_blue];
-			child->cornerDir[yellow_blue_red] = corner_cube_dir_mapping[move/4][parent->cornerDir[yellow_pink_blue]];
-			child->cornerPos[yellow_pink_blue] = parent->cornerPos[yellow_pink_green];
-			child->cornerDir[yellow_pink_blue] = corner_cube_dir_mapping[move/4][parent->cornerDir[yellow_pink_green]];
+			child->cornerPos[yellow_pink_green] = corner_move(yellow_green_red);
+			child->cornerPos[yellow_green_red] = corner_move(yellow_blue_red);
+			child->cornerPos[yellow_blue_red] = corner_move(yellow_pink_blue);
+			child->cornerPos[yellow_pink_blue] = corner_move(yellow_pink_green);
 			break;
 		default:
 			printf("error\n");
